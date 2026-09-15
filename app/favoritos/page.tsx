@@ -1,4 +1,44 @@
-import Link from 'next/link'
-import { BrandLogo } from '@/components/BrandLogo'
-import { ArrowRight, Heart } from 'lucide-react'
-export default function Favorites(){return <main className="min-h-screen"><header className="border-b border-border"><div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-2 px-5 lg:px-8"><BrandLogo compact /><Link href="/buscar" className="text-sm font-semibold">Buscar alojamiento</Link></div></header><section className="mx-auto flex max-w-2xl flex-col items-center px-5 py-28 text-center"><div className="grid size-16 place-items-center rounded-full bg-primary/20 text-primary"><Heart size={28}/></div><h1 className="mt-7 text-3xl font-bold">Mis favoritos</h1><p className="mt-3 max-w-md leading-7 text-muted-foreground">Todavía no tienes alojamientos guardados. Cuando encuentres uno que te guste, guárdalo para volver a verlo.</p><Link href="/buscar" className="mt-8 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-semibold">Explorar alojamientos <ArrowRight size={17}/></Link></section></main>}
+'use client'
+
+import { useState } from 'react'
+import { Heart } from 'lucide-react'
+import { AppHeader, EmptyState, Footer } from '@/components/Shared'
+import { SecondaryButton } from '@/components/ui/button'
+import { RoomCard } from '@/components/RoomCard'
+import { mockRooms } from '@/lib/mocks'
+
+export default function FavoritesPage() {
+  const [saved, setSaved] = useState(mockRooms.slice(0, 3).map(room => room.id))
+  const rooms = mockRooms.filter(room => saved.includes(room.id))
+
+  return (
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <p className="text-sm font-semibold text-primary">Estudiante</p>
+        <h1 className="mt-2 text-3xl font-bold">Mis favoritos</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Guarda los espacios que quieres comparar después.</p>
+        <section className="mt-8">
+          {rooms.length ? (
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {rooms.map(room => (
+                <RoomCard
+                  key={room.id}
+                  room={room}
+                  favoriteAction={
+                    <SecondaryButton size="icon" aria-label="Quitar de favoritos" onClick={() => setSaved(current => current.filter(id => id !== room.id))} className="rounded-full">
+                      <Heart className="fill-primary text-primary" size={17} />
+                    </SecondaryButton>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="Aún no tienes favoritos" copy="Cuando encuentres un alojamiento que te guste, toca el corazón para guardarlo aquí." action="Explorar alojamientos" href="/buscar" />
+          )}
+        </section>
+      </main>
+      <Footer />
+    </div>
+  )
+}

@@ -1,0 +1,52 @@
+'use client'
+
+import Link from 'next/link'
+import { useState } from 'react'
+import { Bell, CalendarDays, Check, Heart, MessageCircle, UserRound, X } from 'lucide-react'
+import { BrandLogo } from '@/components/BrandLogo'
+import { PrimaryButton, SecondaryButton } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
+export function AppHeader({ owner = false }: { owner?: boolean }) {
+  return (
+    <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+      <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <BrandLogo compact />
+        <nav className="hidden items-center gap-5 text-sm font-semibold text-muted-foreground md:flex">
+          {owner ? <><Link href="/propietario">Panel</Link><Link href="/propietario/solicitudes">Solicitudes</Link><Link href="/mensajes">Mensajes</Link></> : <><Link href="/buscar">Buscar</Link><Link href="/favoritos">Favoritos</Link><Link href="/visitas">Mis visitas</Link><Link href="/mensajes">Mensajes</Link></>}
+        </nav>
+        <div className="flex items-center gap-2">
+          {!owner && <Link href="/notificaciones" aria-label="Notificaciones" className="relative grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary"><Bell size={19} /><span className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-black text-foreground ring-2 ring-background">3</span></Link>}
+          <Link href="/perfil" aria-label={owner ? 'Perfil de propietario' : 'Perfil de estudiante'} className="grid size-10 place-items-center rounded-full bg-primary text-foreground transition hover:bg-primary/80"><UserRound size={19} /></Link>
+          <Link href={owner ? '/propietario/nuevo' : '/buscar'} className="hidden rounded-xl bg-primary px-4 py-2.5 text-sm font-bold sm:inline-flex">{owner ? 'Publicar' : 'Explorar'}</Link>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+export function Footer() {
+  return <footer className="mt-16 border-t border-border bg-secondary/50"><div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-4 lg:px-8"><div><BrandLogo compact /><p className="mt-3 text-sm leading-6 text-muted-foreground">Tu espacio, más cerca. Encuentra alojamiento cerca de tu universidad.</p></div><div><h2 className="text-sm font-bold">Descubre</h2><div className="mt-3 grid gap-2 text-sm text-muted-foreground"><Link href="/buscar">Buscar alojamiento</Link><Link href="/">Cómo funciona</Link></div></div><div><h2 className="text-sm font-bold">Propietarios</h2><div className="mt-3 grid gap-2 text-sm text-muted-foreground"><Link href="/propietario/nuevo">Publicar alojamiento</Link><Link href="/propietario">Mi panel</Link></div></div><div><h2 className="text-sm font-bold">Contacto</h2><p className="mt-3 text-sm text-muted-foreground">Arequipa, Perú<br />hola@habitat.pe</p></div></div><p className="border-t border-border px-5 py-5 text-center text-xs text-muted-foreground">© 2026 Habitat. Hecho para estudiantes.</p></footer>
+}
+
+export function EmptyState({ icon = '♡', title, copy, action, href }: { icon?: string; title: string; copy: string; action: string; href: string }) {
+  return <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-14 text-center"><span className="mx-auto grid size-14 place-items-center rounded-full bg-primary/15 text-2xl text-primary">{icon}</span><h2 className="mt-5 text-xl font-bold">{title}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{copy}</p><Link href={href} className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-primary px-5 py-3 text-sm font-bold">{action}</Link></div>
+}
+
+export function FilterPill({ children, active = false, onClick }: { children: React.ReactNode; active?: boolean; onClick?: () => void }) {
+  return <button type="button" onClick={onClick} className={cn('min-h-10 rounded-full border px-4 py-2 text-sm font-semibold transition', active ? 'border-primary bg-primary' : 'border-border bg-card hover:bg-secondary')}>{children}</button>
+}
+
+export function VisitRequestModal({ open, onClose, onSubmitted }: { open: boolean; onClose: () => void; onSubmitted: () => void }) {
+  const [shift, setShift] = useState('Mañana · 9:00 - 12:00')
+  if (!open) return null
+  return <div role="dialog" aria-modal="true" aria-labelledby="visit-title" className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4"><div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-card p-6 shadow-xl"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold text-primary">Solicitar visita</p><h2 id="visit-title" className="mt-1 text-xl font-bold">Conoce tu próximo espacio</h2></div><button type="button" aria-label="Cerrar" onClick={onClose} className="grid size-10 place-items-center rounded-full hover:bg-secondary"><X size={18} /></button></div><div className="mt-6 grid gap-4"><label className="grid gap-2 text-sm font-semibold">Día<input type="date" className="field" /></label><div><p className="mb-2 text-sm font-semibold">Turno</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{['Mañana · 9:00 - 12:00', 'Tarde · 14:00 - 18:00', 'Noche · 18:00 - 20:00'].map(item => <button type="button" key={item} onClick={() => setShift(item)} className={cn('rounded-xl border px-3 py-3 text-left text-xs font-semibold', shift === item ? 'border-primary bg-primary/20' : 'border-border')}>{item}</button>)}</div></div><label className="grid gap-2 text-sm font-semibold">Mensaje <textarea className="field min-h-24" placeholder="Cuéntale algo al propietario (opcional)" /></label><PrimaryButton onClick={onSubmitted} className="w-full">Enviar solicitud</PrimaryButton></div></div></div>
+}
+
+export function Toast({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
+  return <div role="status" className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full bg-foreground px-5 py-3 text-sm font-semibold text-background shadow-xl"><Check size={17} className="text-primary" />{children}{onClose && <button type="button" aria-label="Cerrar aviso" onClick={onClose}><X size={15} /></button>}</div>
+}
+
+export function QuickLinks({ owner = false }: { owner?: boolean }) {
+  return <div className="grid grid-cols-3 gap-3"><Link href={owner ? '/propietario/solicitudes' : '/visitas'} className="rounded-xl border border-border bg-card p-4 text-center text-sm font-semibold"><CalendarDays className="mx-auto mb-2 text-primary" size={20} />{owner ? 'Solicitudes' : 'Mis visitas'}</Link><Link href="/mensajes" className="rounded-xl border border-border bg-card p-4 text-center text-sm font-semibold"><MessageCircle className="mx-auto mb-2 text-primary" size={20} />Mensajes</Link><Link href="/favoritos" className="rounded-xl border border-border bg-card p-4 text-center text-sm font-semibold"><Heart className="mx-auto mb-2 text-primary" size={20} />Favoritos</Link></div>
+}
