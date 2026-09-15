@@ -1,0 +1,7 @@
+import Link from 'next/link'
+import { auth } from '@/auth'
+
+export default async function DashboardPage() {
+  const session = await auth()
+  return <main className="mx-auto max-w-5xl px-5 py-12 lg:px-8"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-semibold text-primary">Mi cuenta</p><h1 className="mt-2 text-4xl font-bold">Hola, {session?.user?.name?.split(' ')[0] || 'bienvenido'}</h1><p className="mt-2 text-sm text-muted-foreground">{session?.user?.email}</p></div><Link href="/" className="text-sm font-semibold">Volver al inicio</Link></div><div className="mt-10 grid gap-5 sm:grid-cols-2"><Link href="/buscar" className="rounded-3xl border border-border p-7 transition hover:-translate-y-1 hover:shadow-lg"><h2 className="text-xl font-bold">Buscar alojamientos</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Filtra por precio, tipo y ubicación para encontrar un lugar disponible.</p></Link><Link href="/dashboard/listings/new" className="rounded-3xl bg-primary p-7 text-primary-foreground transition hover:-translate-y-1 hover:shadow-lg"><h2 className="text-xl font-bold">Publicar alojamiento</h2><p className="mt-2 text-sm leading-6 opacity-80">Añade precio, servicios, contacto y ubicación para recibir consultas.</p></Link></div></main>
+}

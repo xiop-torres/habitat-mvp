@@ -1,0 +1,10 @@
+import Link from 'next/link'
+import { MapPin } from 'lucide-react'
+import dbConnect from '@/lib/dbConnect'
+import Listing from '@/models/Listing'
+
+export default async function ListingsPage() {
+  let listings: Array<{_id: string; title: string; address: string; price: number; roomType: string; amenities?: string[]}> = []
+  try { await dbConnect(); listings = JSON.parse(JSON.stringify(await Listing.find({ status: 'published' }).sort({ createdAt: -1 }).limit(50))) } catch { listings = [] }
+  return <main className="mx-auto max-w-7xl px-5 py-10 lg:px-8"><div className="flex items-end justify-between gap-4"><div><p className="text-sm font-semibold text-primary">Explora Habitat</p><h1 className="mt-2 text-4xl font-bold">Alojamientos disponibles</h1><p className="mt-2 text-muted-foreground">{listings.length ? `${listings.length} publicaciones encontradas` : 'Todavía no hay publicaciones conectadas a la base de datos.'}</p></div><Link href="/" className="text-sm font-semibold">Inicio</Link></div>{listings.length ? <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{listings.map(listing=><article key={listing._id} className="rounded-3xl border border-border p-6"><p className="text-2xl font-bold">S/ {listing.price}<span className="text-xs font-normal text-muted-foreground"> / mes</span></p><h2 className="mt-5 text-lg font-bold">{listing.title}</h2><p className="mt-2 flex items-center gap-1 text-sm text-muted-foreground"><MapPin size={15}/> {listing.address}</p><p className="mt-3 text-sm text-muted-foreground">{listing.roomType === 'shared' ? 'Habitación compartida' : 'Habitación privada'}{listing.amenities?.length ? ` · ${listing.amenities.join(' · ')}` : ''}</p></article>)}</div> : <div className="mt-10 rounded-3xl border border-dashed border-border p-10 text-center"><p className="text-muted-foreground">Las publicaciones aparecerán aquí cuando un propietario las registre.</p><Link href="/dashboard/listings/new" className="mt-5 inline-block rounded-full bg-primary px-5 py-3 text-sm font-bold text-primary-foreground">Publicar un alojamiento</Link></div>}</main>
+}
