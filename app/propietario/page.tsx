@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -38,10 +38,10 @@ export default function OwnerDashboard() {
   // Listings reales de Supabase
   const [listings, setListings] = useState<Listing[]>([])
   const [loadingListings, setLoadingListings] = useState(true)
+  const [updating, setUpdating] = useState<Record<string, boolean>>({})
 
-  // UI state (paused override es local — se implementará en server en 4D)
+  // UI state
   const [tab, setTab] = useState('todos')
-  const [paused, setPaused] = useState<Record<string, boolean>>({})
   const [accepted, setAccepted] = useState<number[]>([])
 
   useEffect(() => {
@@ -76,13 +76,6 @@ export default function OwnerDashboard() {
 
       if (!error && data) {
         setListings(data as Listing[])
-
-        // Inicializar estado local de "pausado" desde el status real
-        const pausedInit: Record<string, boolean> = {}
-        data.forEach((l) => {
-          if (l.status === 'paused') pausedInit[l.id] = true
-        })
-        setPaused(pausedInit)
       }
 
       setLoadingListings(false)
@@ -91,21 +84,40 @@ export default function OwnerDashboard() {
     init()
   }, [router])
 
-  // Aplicar override local de pausa sobre los listings reales
-  const ownerListings = useMemo(
-    () => listings.map((l) => ({ ...l, isPaused: paused[l.id] ?? l.status === 'paused' })),
-    [listings, paused],
-  )
+  async function handleToggleStatus(listingId: string, currentStatus: string) {
+    if (updating[listingId]) return
 
-  const visibleListings = ownerListings.filter((l) => {
-    if (tab === 'activos') return !l.isPaused
-    if (tab === 'pausados') return l.isPaused
+    const newStatus = currentStatus === 'published' ? 'paused' : 'published'
+    
+    setUpdating((prev) => ({ ...prev, [listingId]: true }))
+
+    const supabase = createSupabaseBrowserClient()
+    const { error } = await supabase
+      .from('listings')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', listingId)
+
+    if (error) {
+      alert('Hubo un error al actualizar el estado. Inténtalo nuevamente.')
+    } else {
+      // Actualizar el estado local para reflejar el cambio en la UI
+      setListings((current) =>
+        current.map((l) => (l.id === listingId ? { ...l, status: newStatus } : l))
+      )
+    }
+
+    setUpdating((prev) => ({ ...prev, [listingId]: false }))
+  }
+
+  const visibleListings = listings.filter((l) => {
+    if (tab === 'activos') return l.status === 'published'
+    if (tab === 'pausados') return l.status === 'paused'
     return true
   })
 
-  const activeCount = ownerListings.filter((l) => !l.isPaused).length
-  const pausedCount = ownerListings.filter((l) => l.isPaused).length
-  const totalCount = ownerListings.length
+  const activeCount = listings.filter((l) => l.status === 'published').length
+  const pausedCount = listings.filter((l) => l.status === 'paused').length
+  const totalCount = listings.length
 
   // Loading / auth guard
   if (!authChecked || loadingListings) {
@@ -151,7 +163,7 @@ export default function OwnerDashboard() {
           </div>
         </section>
 
-        {/* Stats cards (datos demo hasta que se implemente analytics en 4D/4E) */}
+        {/* Stats cards */}
         <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             { label: 'Alojamientos activos', value: String(activeCount), sub: `/ ${totalCount} en total`, tag: 'Total real', icon: Home, progress: totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0 },
@@ -253,104 +265,119 @@ export default function OwnerDashboard() {
             )}
 
             <div className="space-y-5">
-              {visibleListings.map((listing) => (
-                <article
-                  key={listing.id}
-                  className={cn(
-                    'overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:shadow-md sm:grid sm:grid-cols-[220px_1fr]',
-                    listing.isPaused ? 'border-dashed border-border opacity-80' : 'border-border',
-                  )}
-                >
-                  {/* Imagen placeholder hasta que se implemente Storage */}
-                  <div className={cn('relative h-56 bg-secondary sm:h-auto', listing.isPaused && 'grayscale')}>
-                    <img src="/habitat-room.png" alt={listing.title} className="h-full w-full object-cover" />
-                    <span
-                      className={cn(
-                        'absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black',
-                        listing.isPaused ? 'bg-secondary text-muted-foreground' : 'bg-emerald-100 text-emerald-700',
-                      )}
-                    >
-                      {listing.isPaused ? <PauseCircle size={13} /> : <ShieldCheck size={13} />}
-                      {listing.isPaused ? 'Pausado' : listing.verified ? 'Verificado' : 'Publicado'}
-                    </span>
-                  </div>
+              {visibleListings.map((listing) => {
+                const isPaused = listing.status === 'paused'
+                const isUpdating = updating[listing.id]
 
-                  <div className="flex min-w-0 flex-col gap-4 p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className={cn('inline-flex items-center gap-2 text-sm font-black', listing.isPaused ? 'text-muted-foreground' : 'text-emerald-700')}>
-                          <span className={cn('size-2 rounded-full', listing.isPaused ? 'bg-muted-foreground' : 'bg-emerald-600')} />
-                          {listing.isPaused ? 'Pausado' : 'Activo y visible en búsquedas'}
-                        </p>
-                        <h2 className="mt-2 text-xl font-black">{listing.title}</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {listing.district}, Arequipa
-                          {listing.university_nearby && ` · Cerca de ${listing.university_nearby}`}
-                        </p>
-                      </div>
-                      <p className="shrink-0 text-xl font-black">
-                        S/ {listing.price_monthly.toFixed(0)}{' '}
-                        <span className="text-sm font-normal text-muted-foreground">/ mes</span>
-                      </p>
-                    </div>
-
-                    {/* Stats — demo hasta 4D/4E */}
-                    {!listing.isPaused ? (
-                      <div className="grid grid-cols-3 gap-2 rounded-xl bg-secondary p-3">
-                        <Stat label="Vistas" value={DEMO_STATS.views} />
-                        <Stat label="Solicitudes" value={DEMO_STATS.requests} highlight />
-                        <Stat label="Visitas hechas" value={DEMO_STATS.visits} />
-                      </div>
-                    ) : (
-                      <p className="rounded-xl bg-secondary p-3 text-sm leading-6 text-muted-foreground">
-                        Este anuncio no es visible para estudiantes actualmente.
-                      </p>
+                return (
+                  <article
+                    key={listing.id}
+                    className={cn(
+                      'overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:shadow-md sm:grid sm:grid-cols-[220px_1fr]',
+                      isPaused ? 'border-dashed border-border opacity-80' : 'border-border',
                     )}
+                  >
+                    {/* Imagen placeholder hasta que se implemente Storage */}
+                    <div className={cn('relative h-56 bg-secondary sm:h-auto', isPaused && 'grayscale')}>
+                      <img src="/habitat-room.png" alt={listing.title} className="h-full w-full object-cover" />
+                      <span
+                        className={cn(
+                          'absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black',
+                          isPaused ? 'bg-secondary text-muted-foreground' : 'bg-emerald-100 text-emerald-700',
+                        )}
+                      >
+                        {isPaused ? <PauseCircle size={13} /> : <ShieldCheck size={13} />}
+                        {isPaused ? 'Pausado' : listing.verified ? 'Verificado' : 'Publicado'}
+                      </span>
+                    </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setPaused((current) => ({ ...current, [listing.id]: !current[listing.id] }))}
-                          className={cn(
-                            'inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-black',
-                            listing.isPaused ? 'bg-secondary hover:bg-primary/20' : 'bg-primary',
+                    <div className="flex min-w-0 flex-col gap-4 p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className={cn('inline-flex items-center gap-2 text-sm font-black', isPaused ? 'text-muted-foreground' : 'text-emerald-700')}>
+                            <span className={cn('size-2 rounded-full', isPaused ? 'bg-muted-foreground' : 'bg-emerald-600')} />
+                            {isPaused ? 'Pausado' : 'Activo y visible en búsquedas'}
+                          </p>
+                          <h2 className="mt-2 text-xl font-black">{listing.title}</h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {listing.district}, Arequipa
+                            {listing.university_nearby && ` · Cerca de ${listing.university_nearby}`}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-xl font-black">
+                          S/ {listing.price_monthly.toFixed(0)}{' '}
+                          <span className="text-sm font-normal text-muted-foreground">/ mes</span>
+                        </p>
+                      </div>
+
+                      {/* Stats */}
+                      {!isPaused ? (
+                        <div className="grid grid-cols-3 gap-2 rounded-xl bg-secondary p-3">
+                          <Stat label="Vistas" value={DEMO_STATS.views} />
+                          <Stat label="Solicitudes" value={DEMO_STATS.requests} highlight />
+                          <Stat label="Visitas hechas" value={DEMO_STATS.visits} />
+                        </div>
+                      ) : (
+                        <p className="rounded-xl bg-secondary p-3 text-sm leading-6 text-muted-foreground">
+                          Este anuncio no es visible para estudiantes actualmente.
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleToggleStatus(listing.id, listing.status)}
+                            className={cn(
+                              'inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-black disabled:opacity-50 transition',
+                              isPaused ? 'bg-secondary hover:bg-primary/20' : 'bg-primary hover:bg-primary/80',
+                            )}
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : isPaused ? (
+                              <CheckCircle2 size={16} />
+                            ) : (
+                              <span className="size-2 rounded-full bg-emerald-600" />
+                            )}
+                            {isUpdating ? 'Procesando...' : isPaused ? 'Activar anuncio' : 'Anuncio activo'}
+                          </button>
+                          {!isPaused && (
+                            <button
+                              type="button"
+                              disabled={isUpdating}
+                              onClick={() => handleToggleStatus(listing.id, listing.status)}
+                              className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20 disabled:opacity-50 transition"
+                            >
+                              <PauseCircle size={16} /> Pausar
+                            </button>
                           )}
-                        >
-                          {listing.isPaused ? <CheckCircle2 size={16} /> : <span className="size-2 rounded-full bg-emerald-600" />}
-                          {listing.isPaused ? 'Activar' : 'Activo'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPaused((current) => ({ ...current, [listing.id]: true }))}
-                          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20"
-                        >
-                          <PauseCircle size={16} /> Pausar
-                        </button>
-                        <Link
-                          href={`/propietario/editar/${listing.id}`}
-                          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20"
-                        >
-                          <Edit3 size={16} /> Editar
-                        </Link>
-                        <Link
-                          href="/propietario/calendario"
-                          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20"
-                        >
-                          <CalendarCheck2 size={16} /> Calendario
+                          <Link
+                            href={`/propietario/editar/${listing.id}`}
+                            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20 transition"
+                          >
+                            <Edit3 size={16} /> Editar
+                          </Link>
+                          <Link
+                            href="/propietario/calendario"
+                            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20 transition"
+                          >
+                            <CalendarCheck2 size={16} /> Calendario
+                          </Link>
+                        </div>
+                        <Link href={`/alojamiento/${listing.id}`} className="inline-flex items-center gap-1 text-sm font-black hover:underline">
+                          Ver ficha pública <ArrowUpRight size={15} />
                         </Link>
                       </div>
-                      <Link href={`/alojamiento/${listing.id}`} className="inline-flex items-center gap-1 text-sm font-black hover:underline">
-                        Ver ficha pública <ArrowUpRight size={15} />
-                      </Link>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                )
+              })}
             </div>
           </section>
 
-          {/* Sidebar — solicitudes y mensajes siguen siendo mock hasta 4D/4E */}
+          {/* Sidebar */}
           <aside className="space-y-6">
             <section id="solicitudes-section" className="rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between">
