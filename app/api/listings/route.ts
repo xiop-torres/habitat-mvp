@@ -1,38 +1,93 @@
 import { NextResponse } from 'next/server'
-import dbConnect from '@/lib/dbConnect'
-import Listing from '@/models/Listing'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/server'
 
+/**
+ * GET /api/listings
+ * - Sin parámetros: devuelve listings publicados (RLS filtra automáticamente).
+ * - ?mine=1: devuelve los listings del propietario autenticado.
+ * - ?district=...  ?maxPrice=...  ?type=... : filtros opcionales.
+ */
 export async function GET(request: Request) {
-  await dbConnect()
+  const supabase = await createSupabaseServerClient()
   const { searchParams } = new URL(request.url)
-  const filter: Record<string, unknown> = { status: 'published' }
-  if (searchParams.get('mine') === '1') {
+  const mine = searchParams.get('mine') === '1'
+
+  let query = supabase
+    .from('listings')
+    .select('*, listing_images(*)')
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  if (mine) {
     const user = await getCurrentUser()
-    if (!user?.id) return NextResponse.json({ error: 'Debes iniciar sesión.' }, { status: 401 })
-    filter.owner = user.id
-    delete filter.status
+    if (!user) {
+      return NextResponse.json({ error: 'Debes iniciar sesión.' }, { status: 401 })
+    }
+    query = query.eq('owner_id', user.id)
+  } else {
+    query = query.eq('status', 'published')
   }
-  const minPrice = Number(searchParams.get('minPrice'))
+
+  const district = searchParams.get('district')
+  if (district) query = query.ilike('district', `%${district}%`)
+
   const maxPrice = Number(searchParams.get('maxPrice'))
-  if (minPrice || maxPrice) filter.price = { ...(minPrice ? { $gte: minPrice } : {}), ...(maxPrice ? { $lte: maxPrice } : {}) }
-  const roomType = searchParams.get('roomType')
-  if (roomType === 'private' || roomType === 'shared') filter.roomType = roomType
-  const query = searchParams.get('q')
-  if (query) filter.$or = [{ title: { $regex: query, $options: 'i' } }, { address: { $regex: query, $options: 'i' } }]
-  const listings = await Listing.find(filter).sort({ createdAt: -1 }).limit(100)
-  return NextResponse.json(listings)
+  if (maxPrice > 0) query = query.lte('price_monthly', maxPrice)
+
+  const minPrice = Number(searchParams.get('minPrice'))
+  if (minPrice > 0) query = query.gte('price_monthly', minPrice)
+
+  const type = searchParams.get('type')
+  if (type) query = query.ilike('property_type', `%${type}%`)
+
+  const q = searchParams.get('q')
+  if (q) query = query.or(`title.ilike.%${q}%,district.ilike.%${q}%`)
+
+  const { data, error } = await query
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json(data ?? [])
 }
 
+/**
+ * POST /api/listings
+ * Crea un nuevo listing en estado `draft`.
+ * owner_id se establece desde auth.uid() — no se acepta del body.
+ */
 export async function POST(request: Request) {
   const user = await getCurrentUser()
-  if (!user?.id) return NextResponse.json({ error: 'Debes iniciar sesión.' }, { status: 401 })
+  if (!user) {
+    return NextResponse.json({ error: 'Debes iniciar sesión.' }, { status: 401 })
+  }
+
+  const supabase = await createSupabaseServerClient()
+
   try {
-    await dbConnect()
-    const listing = await Listing.create({ ...(await request.json()), owner: user.id })
-    return NextResponse.json(listing, { status: 201 })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo publicar el alojamiento.'
-    return NextResponse.json({ error: message }, { status: 400 })
+    const body = await request.json()
+
+    // Nunca aceptar owner_id del body — usar siempre la identidad autenticada
+    const { owner_id: _discarded, ...safeBody } = body
+
+    const { data, error } = await supabase
+      .from('listings')
+      .insert({
+        ...safeBody,
+        owner_id: user.id,
+        status: 'draft',
+      })
+      .select()
+      .single()
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json(data, { status: 201 })
+  } catch {
+    return NextResponse.json({ error: 'No se pudo publicar el alojamiento.' }, { status: 400 })
   }
 }

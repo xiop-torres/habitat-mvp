@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowUpRight,
   CalendarCheck2,
@@ -11,6 +12,7 @@ import {
   Edit3,
   Eye,
   Home,
+  Loader2,
   MessageCircle,
   PauseCircle,
   PlusCircle,
@@ -20,31 +22,99 @@ import {
 } from 'lucide-react'
 import { AppHeader, Footer } from '@/components/Shared'
 import { cn } from '@/lib/utils'
-import { mockConversations, mockRequests, mockRooms } from '@/lib/mocks'
+import { mockConversations, mockRequests } from '@/lib/mocks'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import type { Listing } from '@/lib/supabase/listings'
 
-const listingStats = [
-  { views: 620, requests: 8, visits: 3 },
-  { views: 480, requests: 5, visits: 2 },
-  { views: 320, requests: 4, visits: 1 },
-  { views: 110, requests: 1, visits: 0 },
-]
+// Estadísticas demo por listing (todavía no provienen de Supabase — se implementarán en 4D/4E)
+const DEMO_STATS = { views: 0, requests: 0, visits: 0 }
 
 export default function OwnerDashboard() {
+  const router = useRouter()
+
+  // Auth state
+  const [authChecked, setAuthChecked] = useState(false)
+
+  // Listings reales de Supabase
+  const [listings, setListings] = useState<Listing[]>([])
+  const [loadingListings, setLoadingListings] = useState(true)
+
+  // UI state (paused override es local — se implementará en server en 4D)
   const [tab, setTab] = useState('todos')
-  const [paused, setPaused] = useState<Record<number, boolean>>({ 4: true })
+  const [paused, setPaused] = useState<Record<string, boolean>>({})
   const [accepted, setAccepted] = useState<number[]>([])
 
-  const ownerListings = useMemo(() => mockRooms.map((room, index) => ({
-    ...room,
-    stats: listingStats[index],
-    isPaused: paused[room.id as number],
-  })), [paused])
+  useEffect(() => {
+    async function init() {
+      const supabase = createSupabaseBrowserClient()
 
-  const visibleListings = ownerListings.filter(room => {
-    if (tab === 'activos') return !room.isPaused
-    if (tab === 'pausados') return room.isPaused
+      // Verificar sesión y rol
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.replace('/login')
+        return
+      }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile?.role !== 'owner') {
+        router.replace('/buscar')
+        return
+      }
+
+      setAuthChecked(true)
+
+      // Cargar listings reales del owner autenticado (RLS garantiza aislamiento)
+      const { data, error } = await supabase
+        .from('listings')
+        .select('*')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (!error && data) {
+        setListings(data as Listing[])
+
+        // Inicializar estado local de "pausado" desde el status real
+        const pausedInit: Record<string, boolean> = {}
+        data.forEach((l) => {
+          if (l.status === 'paused') pausedInit[l.id] = true
+        })
+        setPaused(pausedInit)
+      }
+
+      setLoadingListings(false)
+    }
+
+    init()
+  }, [router])
+
+  // Aplicar override local de pausa sobre los listings reales
+  const ownerListings = useMemo(
+    () => listings.map((l) => ({ ...l, isPaused: paused[l.id] ?? l.status === 'paused' })),
+    [listings, paused],
+  )
+
+  const visibleListings = ownerListings.filter((l) => {
+    if (tab === 'activos') return !l.isPaused
+    if (tab === 'pausados') return l.isPaused
     return true
   })
+
+  const activeCount = ownerListings.filter((l) => !l.isPaused).length
+  const pausedCount = ownerListings.filter((l) => l.isPaused).length
+  const totalCount = ownerListings.length
+
+  // Loading / auth guard
+  if (!authChecked || loadingListings) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="animate-spin text-muted-foreground" size={32} />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-secondary/30 text-foreground">
@@ -64,12 +134,13 @@ export default function OwnerDashboard() {
               </span>
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Gestiona tus inmuebles, atiende consultas de universitarios validados y programa visitas presenciales seguras en Yanahuara y Cayma.
+              Gestiona tus inmuebles, atiende consultas de universitarios validados y programa visitas presenciales seguras.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/propietario/solicitudes" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-bold transition hover:bg-secondary">
-              <CalendarCheck2 size={17} /> Solicitudes de visita <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-black">4 pendientes</span>
+              <CalendarCheck2 size={17} /> Solicitudes de visita{' '}
+              <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-black">4 pendientes</span>
             </Link>
             <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-card px-4 py-2 text-sm font-bold transition hover:bg-secondary">
               <Download size={17} /> Reporte del mes
@@ -80,66 +151,60 @@ export default function OwnerDashboard() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-2xl border border-primary/40 bg-primary/25 p-5 md:p-7">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-4">
-              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary">
-                <CalendarCheck2 size={23} />
-              </span>
-              <div>
-                <h2 className="text-xl font-black">Tienes 2 visitas agendadas para este sábado 19 de Octubre cerca de la UCSM</h2>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">Recuerda confirmar tu disponibilidad con los estudiantes universitarios con al menos 2 horas de anticipación.</p>
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Link href="/propietario/solicitudes" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-card px-4 py-2 text-sm font-bold">
-                <CalendarCheck2 size={16} /> 4 pendientes
-              </Link>
-              <Link href="/propietario/calendario" className="inline-flex min-h-10 items-center rounded-xl bg-primary px-4 py-2 text-sm font-black">Ver agenda de visitas</Link>
-            </div>
-          </div>
-        </section>
-
+        {/* Stats cards (datos demo hasta que se implemente analytics en 4D/4E) */}
         <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: 'Alojamientos activos', value: '3', sub: '/ 4 en total', tag: '100% ocupabilidad', icon: Home, progress: 75 },
-            { label: 'Visitas pendientes', value: '4', sub: '2 estudiantes de UCSM y 2 de UNSA', tag: 'Por confirmar hoy', icon: CalendarCheck2 },
-            { label: 'Mensajes nuevos', value: '2', sub: 'Tiempo promedio de rpta: 14 min', tag: 'Activos', icon: MessageCircle },
-            { label: 'Visualizaciones (mes)', value: '1,420', sub: 'Crecimiento frente al mes anterior', tag: '+18%', icon: Eye, trend: true },
-          ].map(item => {
+            { label: 'Alojamientos activos', value: String(activeCount), sub: `/ ${totalCount} en total`, tag: 'Total real', icon: Home, progress: totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0 },
+            { label: 'Visitas pendientes', value: '—', sub: 'Disponible próximamente', tag: 'Demo', icon: CalendarCheck2 },
+            { label: 'Mensajes nuevos', value: '—', sub: 'Disponible próximamente', tag: 'Demo', icon: MessageCircle },
+            { label: 'Visualizaciones (mes)', value: '—', sub: 'Disponible próximamente', tag: 'Demo', icon: Eye },
+          ].map((item) => {
             const Icon = item.icon
             return (
               <article key={item.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-bold text-muted-foreground">{item.label}</p>
-                  <span className="grid size-9 place-items-center rounded-xl bg-secondary"><Icon size={18} className="text-primary" /></span>
+                  <span className="grid size-9 place-items-center rounded-xl bg-secondary">
+                    <Icon size={18} className="text-primary" />
+                  </span>
                 </div>
                 <div className="mt-5 flex items-end justify-between gap-3">
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-black">{item.value}</span>
-                    {!item.trend && <span className="text-sm text-muted-foreground">{item.sub}</span>}
+                    <span className="text-sm text-muted-foreground">{item.sub}</span>
                   </div>
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-black text-emerald-700">{item.tag}</span>
                 </div>
-                {item.progress && <div className="mt-5 h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${item.progress}%` }} /></div>}
-                {item.trend && <div className="mt-5 flex h-7 items-end gap-1 text-primary">{[35, 38, 36, 40, 52, 61, 54, 72].map((height, index) => <span key={index} className="w-full rounded-t bg-primary/70" style={{ height: `${height}%` }} />)}</div>}
-                {!item.progress && !item.trend && <p className="mt-5 text-sm text-muted-foreground">{item.sub}</p>}
+                {item.progress !== undefined && item.progress > 0 && (
+                  <div className="mt-5 h-2 overflow-hidden rounded-full bg-secondary">
+                    <div className="h-full rounded-full bg-emerald-600" style={{ width: `${item.progress}%` }} />
+                  </div>
+                )}
               </article>
             )
           })}
         </section>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
+          {/* Listings reales */}
           <section className="space-y-5">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="inline-flex w-fit rounded-xl bg-secondary p-1">
                   {[
-                    ['todos', 'Todos (4)'],
-                    ['activos', 'Activos (3)'],
-                    ['pausados', 'Pausados (1)'],
+                    ['todos', `Todos (${totalCount})`],
+                    ['activos', `Activos (${activeCount})`],
+                    ['pausados', `Pausados (${pausedCount})`],
                   ].map(([key, label]) => (
-                    <button key={key} type="button" onClick={() => setTab(key)} className={cn('min-h-9 rounded-lg px-4 text-sm font-black transition', tab === key ? 'bg-primary shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTab(key)}
+                      className={cn(
+                        'min-h-9 rounded-lg px-4 text-sm font-black transition',
+                        tab === key ? 'bg-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
                       {label}
                     </button>
                   ))}
@@ -156,56 +221,128 @@ export default function OwnerDashboard() {
               </div>
             </div>
 
+            {/* Estado vacío */}
+            {visibleListings.length === 0 && (
+              <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-card p-10 text-center">
+                <span className="grid size-14 place-items-center rounded-full bg-secondary">
+                  <Home size={26} className="text-muted-foreground" />
+                </span>
+                <div>
+                  <p className="font-black">
+                    {tab === 'todos'
+                      ? 'Aún no tienes alojamientos publicados'
+                      : tab === 'activos'
+                        ? 'No tienes alojamientos activos'
+                        : 'No tienes alojamientos pausados'}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {tab === 'todos'
+                      ? 'Publica tu primer espacio y conecta con estudiantes universitarios.'
+                      : 'Cambia el filtro para ver otros alojamientos.'}
+                  </p>
+                </div>
+                {tab === 'todos' && (
+                  <Link
+                    href="/propietario/nuevo"
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-black"
+                  >
+                    <PlusCircle size={17} /> Publicar nuevo alojamiento
+                  </Link>
+                )}
+              </div>
+            )}
+
             <div className="space-y-5">
-              {visibleListings.map(room => (
-                <article key={room.id} className={cn('overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:shadow-md sm:grid sm:grid-cols-[220px_1fr]', room.isPaused ? 'border-dashed border-border opacity-80' : 'border-border')}>
-                  <div className={cn('relative h-56 bg-secondary sm:h-auto', room.isPaused && 'grayscale')}>
-                    <img src={room.image} alt={room.title} className="h-full w-full object-cover" />
-                    <span className={cn('absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black', room.isPaused ? 'bg-secondary text-muted-foreground' : 'bg-emerald-100 text-emerald-700')}>
-                      {room.isPaused ? <PauseCircle size={13} /> : <ShieldCheck size={13} />}
-                      {room.isPaused ? 'Pausado' : 'Verificado'}
+              {visibleListings.map((listing) => (
+                <article
+                  key={listing.id}
+                  className={cn(
+                    'overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:shadow-md sm:grid sm:grid-cols-[220px_1fr]',
+                    listing.isPaused ? 'border-dashed border-border opacity-80' : 'border-border',
+                  )}
+                >
+                  {/* Imagen placeholder hasta que se implemente Storage */}
+                  <div className={cn('relative h-56 bg-secondary sm:h-auto', listing.isPaused && 'grayscale')}>
+                    <img src="/habitat-room.png" alt={listing.title} className="h-full w-full object-cover" />
+                    <span
+                      className={cn(
+                        'absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black',
+                        listing.isPaused ? 'bg-secondary text-muted-foreground' : 'bg-emerald-100 text-emerald-700',
+                      )}
+                    >
+                      {listing.isPaused ? <PauseCircle size={13} /> : <ShieldCheck size={13} />}
+                      {listing.isPaused ? 'Pausado' : listing.verified ? 'Verificado' : 'Publicado'}
                     </span>
                   </div>
+
                   <div className="flex min-w-0 flex-col gap-4 p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <p className={cn('inline-flex items-center gap-2 text-sm font-black', room.isPaused ? 'text-muted-foreground' : 'text-emerald-700')}>
-                          <span className={cn('size-2 rounded-full', room.isPaused ? 'bg-muted-foreground' : 'bg-emerald-600')} />
-                          {room.isPaused ? 'En mantenimiento / renovación temporal' : 'Activo y visible en búsquedas'}
+                        <p className={cn('inline-flex items-center gap-2 text-sm font-black', listing.isPaused ? 'text-muted-foreground' : 'text-emerald-700')}>
+                          <span className={cn('size-2 rounded-full', listing.isPaused ? 'bg-muted-foreground' : 'bg-emerald-600')} />
+                          {listing.isPaused ? 'Pausado' : 'Activo y visible en búsquedas'}
                         </p>
-                        <h2 className="mt-2 text-xl font-black">{room.title}</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">{room.district} · {room.distance}</p>
+                        <h2 className="mt-2 text-xl font-black">{listing.title}</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {listing.district}, Arequipa
+                          {listing.university_nearby && ` · Cerca de ${listing.university_nearby}`}
+                        </p>
                       </div>
-                      <p className="shrink-0 text-xl font-black">S/ {room.price} <span className="text-sm font-normal text-muted-foreground">/ mes</span></p>
+                      <p className="shrink-0 text-xl font-black">
+                        S/ {listing.price_monthly.toFixed(0)}{' '}
+                        <span className="text-sm font-normal text-muted-foreground">/ mes</span>
+                      </p>
                     </div>
 
-                    {!room.isPaused ? (
+                    {/* Stats — demo hasta 4D/4E */}
+                    {!listing.isPaused ? (
                       <div className="grid grid-cols-3 gap-2 rounded-xl bg-secondary p-3">
-                        <Stat label="Vistas" value={room.stats.views} />
-                        <Stat label="Solicitudes" value={room.stats.requests} highlight />
-                        <Stat label="Visitas hechas" value={room.stats.visits} />
+                        <Stat label="Vistas" value={DEMO_STATS.views} />
+                        <Stat label="Solicitudes" value={DEMO_STATS.requests} highlight />
+                        <Stat label="Visitas hechas" value={DEMO_STATS.visits} />
                       </div>
                     ) : (
-                      <p className="rounded-xl bg-secondary p-3 text-sm leading-6 text-muted-foreground">Este anuncio no es visible para estudiantes actualmente. Puedes reactivarlo cuando esté disponible para el ciclo universitario 2025-I.</p>
+                      <p className="rounded-xl bg-secondary p-3 text-sm leading-6 text-muted-foreground">
+                        Este anuncio no es visible para estudiantes actualmente.
+                      </p>
                     )}
 
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => setPaused(current => ({ ...current, [room.id as number]: !current[room.id as number] }))} className={cn('inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-black', room.isPaused ? 'bg-secondary hover:bg-primary/20' : 'bg-primary')}>
-                          {room.isPaused ? <CheckCircle2 size={16} /> : <span className="size-2 rounded-full bg-emerald-600" />}
-                          {room.isPaused ? 'Activar' : 'Activo'}
+                        <button
+                          type="button"
+                          onClick={() => setPaused((current) => ({ ...current, [listing.id]: !current[listing.id] }))}
+                          className={cn(
+                            'inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-black',
+                            listing.isPaused ? 'bg-secondary hover:bg-primary/20' : 'bg-primary',
+                          )}
+                        >
+                          {listing.isPaused ? <CheckCircle2 size={16} /> : <span className="size-2 rounded-full bg-emerald-600" />}
+                          {listing.isPaused ? 'Activar' : 'Activo'}
                         </button>
-                        <button type="button" onClick={() => setPaused(current => ({ ...current, [room.id as number]: true }))} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20">
+                        <button
+                          type="button"
+                          onClick={() => setPaused((current) => ({ ...current, [listing.id]: true }))}
+                          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20"
+                        >
                           <PauseCircle size={16} /> Pausar
                         </button>
-                        <Link href={`/propietario/editar/${room.id}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20">
+                        <Link
+                          href={`/propietario/editar/${listing.id}`}
+                          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20"
+                        >
                           <Edit3 size={16} /> Editar
                         </Link>
-                        <Link href="/propietario/calendario" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20">
+                        <Link
+                          href="/propietario/calendario"
+                          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-bold hover:bg-primary/20"
+                        >
                           <CalendarCheck2 size={16} /> Calendario
                         </Link>
                       </div>
-                      <Link href={`/alojamiento/${room.id}`} className="inline-flex items-center gap-1 text-sm font-black hover:underline">Ver ficha pública <ArrowUpRight size={15} /></Link>
+                      <Link href={`/alojamiento/${listing.id}`} className="inline-flex items-center gap-1 text-sm font-black hover:underline">
+                        Ver ficha pública <ArrowUpRight size={15} />
+                      </Link>
                     </div>
                   </div>
                 </article>
@@ -213,6 +350,7 @@ export default function OwnerDashboard() {
             </div>
           </section>
 
+          {/* Sidebar — solicitudes y mensajes siguen siendo mock hasta 4D/4E */}
           <aside className="space-y-6">
             <section id="solicitudes-section" className="rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between">
@@ -240,16 +378,29 @@ export default function OwnerDashboard() {
                       <p className="mt-1 truncate text-xs text-muted-foreground">{request.room.title}</p>
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <button type="button" onClick={() => setAccepted(ids => [...ids, request.id])} disabled={accepted.includes(request.id)} className="min-h-10 flex-1 rounded-xl bg-primary px-3 py-2 text-sm font-black disabled:bg-emerald-100 disabled:text-emerald-700">
+                      <button
+                        type="button"
+                        onClick={() => setAccepted((ids) => [...ids, request.id])}
+                        disabled={accepted.includes(request.id)}
+                        className="min-h-10 flex-1 rounded-xl bg-primary px-3 py-2 text-sm font-black disabled:bg-emerald-100 disabled:text-emerald-700"
+                      >
                         {accepted.includes(request.id) ? 'Visita aceptada' : 'Aceptar visita'}
                       </button>
-                      <button type="button" className="min-h-10 rounded-xl bg-card px-3 py-2 text-sm font-bold hover:bg-primary/20">{index === 0 ? 'Reprogramar' : 'Rechazar'}</button>
-                      {index === 0 && <Link href="/mensajes" aria-label="Conversar" className="grid size-10 place-items-center rounded-xl bg-card hover:bg-primary/20"><MessageCircle size={17} /></Link>}
+                      <button type="button" className="min-h-10 rounded-xl bg-card px-3 py-2 text-sm font-bold hover:bg-primary/20">
+                        {index === 0 ? 'Reprogramar' : 'Rechazar'}
+                      </button>
+                      {index === 0 && (
+                        <Link href="/mensajes" aria-label="Conversar" className="grid size-10 place-items-center rounded-xl bg-card hover:bg-primary/20">
+                          <MessageCircle size={17} />
+                        </Link>
+                      )}
                     </div>
                   </article>
                 ))}
               </div>
-              <Link href="/propietario/solicitudes" className="mt-4 inline-flex w-full justify-center text-sm font-black hover:underline">Ver todas las solicitudes históricas (18)</Link>
+              <Link href="/propietario/solicitudes" className="mt-4 inline-flex w-full justify-center text-sm font-black hover:underline">
+                Ver todas las solicitudes históricas
+              </Link>
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -282,7 +433,9 @@ export default function OwnerDashboard() {
                 <span className="grid size-9 place-items-center rounded-xl bg-primary/25"><ShieldCheck size={18} /></span>
                 <h2 className="text-xl font-black">Comunidad Universitaria Directa</h2>
               </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">Conectas directamente con estudiantes de la UCSM, UNSA y San Pablo sin intermediarios ni comisiones sorpresa.</p>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Conectas directamente con estudiantes de la UCSM, UNSA y San Pablo sin intermediarios ni comisiones sorpresa.
+              </p>
               <div className="mt-4 flex items-center gap-2 rounded-xl bg-secondary p-3 text-sm font-bold">
                 <CheckCircle2 size={18} className="text-emerald-600" /> Trato 100% directo y sin comisiones de alquiler
               </div>
@@ -299,7 +452,7 @@ function Stat({ label, value, highlight = false }: { label: string; value: numbe
   return (
     <div>
       <p className="text-[11px] font-bold text-muted-foreground">{label}</p>
-      <p className={cn('mt-0.5 text-sm font-black', highlight && 'text-primary')}>{value}</p>
+      <p className={cn('mt-0.5 text-sm font-black', highlight && 'text-primary')}>{value === 0 ? '—' : value}</p>
     </div>
   )
 }
