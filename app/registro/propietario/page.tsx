@@ -1,15 +1,90 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, AtSign, Home, KeyRound, Phone } from 'lucide-react'
+import { ArrowRight, AtSign, Home, KeyRound, Loader2, Phone } from 'lucide-react'
 import { BrandLogo } from '@/components/BrandLogo'
 import { cn } from '@/lib/utils'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 export default function OwnerRegistration() {
   const router = useRouter()
-  const [accepted, setAccepted] = useState(true)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [accepted, setAccepted] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (loading) return
+
+    setError('')
+    setInfo('')
+
+    if (password.length < 8) {
+      setError('La contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const cleanEmail = email.trim().toLowerCase()
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
+          data: {
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            role: 'owner',
+            phone: phone.trim(),
+          },
+        },
+      })
+
+      if (signUpError) {
+        if (signUpError.message.includes('already registered') || signUpError.status === 422) {
+          setError('Este correo electrónico ya se encuentra registrado.')
+        } else if (signUpError.message.includes('Password should be')) {
+          setError('La contraseña no cumple con los requisitos de seguridad.')
+        } else {
+          setError(signUpError.message || 'No se pudo crear la cuenta de propietario.')
+        }
+        setLoading(false)
+        return
+      }
+
+      // Si Supabase devuelve sesión activa (confirmación desactivada o auto-confirm)
+      if (data.session) {
+        // Redirección inmediata según requerimiento 7
+        router.push('/propietario/nuevo')
+        return
+      }
+
+      // Si Supabase requiere confirmación por email
+      setInfo('¡Cuenta de propietario creada con éxito! Revisa tu bandeja de entrada para confirmar tu correo y empezar a publicar.')
+      setLoading(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error inesperado durante el registro.')
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-secondary/35 text-foreground">
@@ -41,56 +116,122 @@ export default function OwnerRegistration() {
             <Link href="/registro/estudiante" className="shrink-0 text-sm font-black hover:underline">← Cambiar a estudiante</Link>
           </div>
 
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              router.push('/propietario/nuevo')
-            }}
-            className="px-8 py-9"
-          >
+          <form onSubmit={handleSubmit} className="px-8 py-9">
             <h1 className="text-3xl font-black tracking-tight">Registra tu cuenta de propietario</h1>
             <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Conecta con estudiantes universitarios verificados y llena tus vacantes en tiempo récord.</p>
 
             <div className="mt-7 grid gap-5 sm:grid-cols-2">
               <Field label="Nombre">
-                <input required className="field bg-secondary" defaultValue="Carlos" />
+                <input
+                  required
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  className="field bg-secondary"
+                  placeholder="Tu nombre"
+                />
               </Field>
               <Field label="Apellido">
-                <input required className="field bg-secondary" defaultValue="Morales" />
+                <input
+                  required
+                  value={lastName}
+                  onChange={e => setLastName(e.target.value)}
+                  className="field bg-secondary"
+                  placeholder="Tus apellidos"
+                />
               </Field>
 
               <Field label="Correo electrónico" className="sm:col-span-2">
                 <div className="relative">
                   <AtSign className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-                  <input required type="email" className="field bg-secondary pl-12" defaultValue="carlos.morales@gmail.com" />
+                  <input
+                    required
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="field bg-secondary pl-12"
+                    placeholder="propietario@ejemplo.com"
+                  />
                 </div>
               </Field>
 
               <Field label="Teléfono / WhatsApp de contacto" hint="Para avisos de visitas" className="sm:col-span-2">
                 <div className="relative">
                   <Phone className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-                  <input required type="tel" className="field bg-secondary pl-12" defaultValue="+51 954 120 488" />
+                  <input
+                    required
+                    type="tel"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    className="field bg-secondary pl-12"
+                    placeholder="+51 987 654 321"
+                  />
                 </div>
               </Field>
 
               <Field label="Contraseña">
                 <div className="relative">
                   <KeyRound className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-                  <input required minLength={8} type="password" className="field bg-secondary pl-12" defaultValue="PropietarioSeguro2026!" />
+                  <input
+                    required
+                    minLength={8}
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="field bg-secondary pl-12"
+                    placeholder="Mínimo 8 caracteres"
+                  />
                 </div>
               </Field>
               <Field label="Confirmar contraseña">
-                <input required minLength={8} type="password" className="field bg-secondary" defaultValue="PropietarioSeguro2026!" />
+                <input
+                  required
+                  minLength={8}
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  className="field bg-secondary"
+                  placeholder="Repite tu contraseña"
+                />
               </Field>
             </div>
 
             <label className="mt-6 flex items-start gap-3 text-sm leading-6 text-muted-foreground">
-              <input required type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} className="mt-1 size-4 rounded accent-[var(--primary)]" />
+              <input
+                required
+                type="checkbox"
+                checked={accepted}
+                onChange={event => setAccepted(event.target.checked)}
+                className="mt-1 size-4 rounded accent-[var(--primary)]"
+              />
               <span>Acepto los Términos y Condiciones para Arrendadores y las políticas de convivencia estudiantil de Habitat.</span>
             </label>
 
-            <button type="submit" disabled={!accepted} className="mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-primary px-5 py-3 text-base font-black shadow-lg shadow-primary/20 transition hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-60">
-              Crear cuenta de propietario <ArrowRight size={21} />
+            {error && (
+              <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                {error}
+              </div>
+            )}
+
+            {info && (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+                {info}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={!accepted || loading}
+              className="mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-primary px-5 py-3 text-base font-black shadow-lg shadow-primary/20 transition hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="size-5 animate-spin" /> Creando cuenta...
+                </>
+              ) : (
+                <>
+                  Crear cuenta de propietario <ArrowRight size={21} />
+                </>
+              )}
             </button>
             <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">Al registrarte entrarás a la pantalla de bienvenida para publicar tu primer alojamiento en 9 sencillos pasos.</p>
 

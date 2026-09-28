@@ -1,11 +1,17 @@
-import { auth } from '@/auth'
+import { type NextRequest } from 'next/server'
+import { updateSession } from '@/lib/supabase/proxy'
 
-export default auth((request) => {
-  if (!request.auth && request.nextUrl.pathname.startsWith('/dashboard')) {
-    const loginUrl = new URL('/login', request.nextUrl.origin)
-    loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname)
-    return Response.redirect(loginUrl)
-  }
-})
+export async function proxy(request: NextRequest) {
+  return await updateSession(request)
+}
 
-export const config = { matcher: ['/dashboard/:path*'] }
+export default proxy
+
+export const config = {
+  matcher: [
+    /*
+     * Aplica a todas las rutas excepto archivos estáticos de Next.js, imágenes y favicons.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+}

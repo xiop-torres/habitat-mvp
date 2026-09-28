@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, AtSign, Building2, ChevronDown, GraduationCap } from 'lucide-react'
+import { ArrowRight, AtSign, Building2, ChevronDown, GraduationCap, Loader2 } from 'lucide-react'
 import { BrandLogo } from '@/components/BrandLogo'
 import { cn } from '@/lib/utils'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 const universities = [
   'Universidad Católica de Santa María (UCSM - Arequipa)',
@@ -17,7 +18,83 @@ const universities = [
 
 export default function StudentRegistration() {
   const router = useRouter()
-  const [accepted, setAccepted] = useState(true)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [university, setUniversity] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [accepted, setAccepted] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (loading) return
+
+    setError('')
+    setInfo('')
+
+    if (password.length < 8) {
+      setError('La contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const cleanEmail = email.trim().toLowerCase()
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
+          data: {
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            role: 'student',
+            university,
+          },
+        },
+      })
+
+      if (signUpError) {
+        if (signUpError.message.includes('already registered') || signUpError.status === 422) {
+          setError('Este correo electrónico ya se encuentra registrado.')
+        } else if (signUpError.message.includes('Password should be')) {
+          setError('La contraseña no cumple con los requisitos de seguridad.')
+        } else {
+          setError(signUpError.message || 'No se pudo crear la cuenta.')
+        }
+        setLoading(false)
+        return
+      }
+
+      // Si Supabase devuelve sesión activa (confirmación desactivada o auto-confirm)
+      if (data.session) {
+        // Redirección inmediata según requerimiento 7
+        router.push('/buscar')
+        return
+      }
+
+      // Si Supabase requiere confirmación por email
+      setInfo('¡Cuenta creada con éxito! Revisa tu bandeja de entrada para confirmar tu correo y empezar a explorar.')
+      setLoading(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error inesperado durante el registro.')
+      setLoading(false)
+    }
+  }
+
+  const isPasswordValid = password.length >= 8
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -49,61 +126,135 @@ export default function StudentRegistration() {
             <Link href="/registro/propietario" className="shrink-0 text-sm font-black hover:underline">← Cambiar a propietario</Link>
           </div>
 
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              router.push('/buscar')
-            }}
-            className="px-8 py-9"
-          >
+          <form onSubmit={handleSubmit} className="px-8 py-9">
             <h1 className="text-3xl font-black tracking-tight">Crea tu cuenta de estudiante</h1>
             <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Encuentra habitaciones verificadas y agenda visitas gratuitas sin comisiones.</p>
 
             <div className="mt-7 grid gap-5 sm:grid-cols-2">
               <Field label="Nombre">
-                <input required className="field bg-secondary" defaultValue="Diego" />
+                <input
+                  required
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  className="field bg-secondary"
+                  placeholder="Tu nombre"
+                />
               </Field>
               <Field label="Apellido">
-                <input required className="field bg-secondary" defaultValue="Rodríguez" />
+                <input
+                  required
+                  value={lastName}
+                  onChange={e => setLastName(e.target.value)}
+                  className="field bg-secondary"
+                  placeholder="Tus apellidos"
+                />
               </Field>
 
               <Field label="Correo institucional o personal" className="sm:col-span-2" hint="Recomendado .edu.pe">
                 <div className="relative">
                   <AtSign className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-                  <input required type="email" className="field bg-secondary pl-12" defaultValue="diego.r@ucsm.edu.pe" />
+                  <input
+                    required
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="field bg-secondary pl-12"
+                    placeholder="estudiante@universidad.edu.pe"
+                  />
                 </div>
               </Field>
 
               <Field label="Universidad o instituto" optional="Opcional" hint="Para calcular distancias a pie" className="sm:col-span-2">
                 <div className="relative">
                   <Building2 className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-                  <select className="field appearance-none bg-secondary pl-12 pr-12" defaultValue={universities[0]}>
-                    {universities.map(university => <option key={university}>{university}</option>)}
+                  <select
+                    value={university}
+                    onChange={e => setUniversity(e.target.value)}
+                    className="field appearance-none bg-secondary pl-12 pr-12"
+                  >
+                    <option value="">Selecciona tu universidad o instituto</option>
+                    {universities.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                   <ChevronDown className="absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
                 </div>
               </Field>
 
               <Field label="Contraseña">
-                <input required minLength={8} type="password" className="field bg-secondary" defaultValue="PasswordSegura2024!" />
+                <input
+                  required
+                  minLength={8}
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="field bg-secondary"
+                  placeholder="Mínimo 8 caracteres"
+                />
               </Field>
               <Field label="Confirmar contraseña">
-                <input required minLength={8} type="password" className="field bg-secondary" defaultValue="PasswordSegura2024!" />
+                <input
+                  required
+                  minLength={8}
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  className="field bg-secondary"
+                  placeholder="Repite tu contraseña"
+                />
               </Field>
             </div>
 
             <div className="mt-6 flex items-center gap-2">
-              {[0, 1, 2, 3].map(item => <span key={item} className="h-1.5 flex-1 rounded-full bg-emerald-500" />)}
-              <span className="ml-1 whitespace-nowrap text-xs font-black text-emerald-600">Segura y válida</span>
+              {[0, 1, 2, 3].map(item => (
+                <span
+                  key={item}
+                  className={cn(
+                    'h-1.5 flex-1 rounded-full transition-colors',
+                    isPasswordValid ? 'bg-emerald-500' : 'bg-muted'
+                  )}
+                />
+              ))}
+              <span className={cn('ml-1 whitespace-nowrap text-xs font-black', isPasswordValid ? 'text-emerald-600' : 'text-muted-foreground')}>
+                {isPasswordValid ? 'Segura y válida' : 'Mínimo 8 caracteres'}
+              </span>
             </div>
 
             <label className="mt-6 flex items-start gap-3 text-sm leading-6 text-muted-foreground">
-              <input required type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} className="mt-1 size-4 rounded accent-[var(--primary)]" />
+              <input
+                required
+                type="checkbox"
+                checked={accepted}
+                onChange={event => setAccepted(event.target.checked)}
+                className="mt-1 size-4 rounded accent-[var(--primary)]"
+              />
               <span>Acepto los Términos y Condiciones de Habitat y la Política de Privacidad para la comunidad universitaria.</span>
             </label>
 
-            <button type="submit" disabled={!accepted} className="mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-primary px-5 py-3 text-base font-black shadow-lg shadow-primary/20 transition hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-60">
-              Crear mi cuenta <ArrowRight size={21} />
+            {error && (
+              <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                {error}
+              </div>
+            )}
+
+            {info && (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+                {info}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={!accepted || loading}
+              className="mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-primary px-5 py-3 text-base font-black shadow-lg shadow-primary/20 transition hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="size-5 animate-spin" /> Creando cuenta...
+                </>
+              ) : (
+                <>
+                  Crear mi cuenta <ArrowRight size={21} />
+                </>
+              )}
             </button>
             <p className="mt-3 text-center text-xs text-muted-foreground">Serás redirigido directamente al buscador de alojamientos para empezar tu búsqueda.</p>
 

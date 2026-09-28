@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { AppHeader, Footer } from '@/components/Shared'
 import { cn } from '@/lib/utils'
+import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
 
 const notificationSeed = [
   {
@@ -44,7 +45,7 @@ const notificationSeed = [
     badge: 'Chat de arrendador',
     meta: 'Verificada',
     title: 'Nuevo mensaje de Sra. Elena Valdivia (Cayma)',
-    text: 'Hola Diego, sí tenemos disponibilidad para visita virtual por Google Meet hoy a las 4:30 PM.',
+    text: 'Hola, sí tenemos disponibilidad para visita virtual por Google Meet hoy a las 4:30 PM.',
     time: 'Hace 1 hora',
     icon: MessageCircle,
     unread: true,
@@ -118,6 +119,7 @@ const filters = [
 ]
 
 export default function NotificationsPage() {
+  const { profile } = useCurrentUserProfile()
   const [activeFilter, setActiveFilter] = useState('todas')
   const [onlyUnread, setOnlyUnread] = useState(false)
   const [readIds, setReadIds] = useState<number[]>([])
@@ -263,8 +265,8 @@ export default function NotificationsPage() {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">Recibe alertas críticas de citas y bajas de precio al instante.</p>
               <div className="mt-4 space-y-3">
                 {[
-                  { icon: Smartphone, label: 'WhatsApp', value: '+51 987 *** 210' },
-                  { icon: Mail, label: 'Correo UCSM', value: 'diego.r@ucsm.edu.pe' },
+                  { icon: Smartphone, label: 'WhatsApp', value: profile?.phone || '+51 987 *** 210' },
+                  { icon: Mail, label: 'Correo de contacto', value: profile?.email || 'Correo confirmado' },
                   { icon: Bell, label: 'Notificaciones Web', value: 'Navegador activo' },
                 ].map(channel => {
                   const Icon = channel.icon

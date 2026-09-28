@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
   Bell,
@@ -11,6 +12,7 @@ import {
   GraduationCap,
   HelpCircle,
   LockKeyhole,
+  LogOut,
   Mail,
   MapPin,
   Pencil,
@@ -26,6 +28,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AppHeader, Footer } from "@/components/Shared";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useCurrentUserProfile, getInitials } from "@/lib/supabase/useProfile";
 
 const serviceOptions = [
   "WiFi fibra óptica (>100 Mbps)",
@@ -46,6 +50,9 @@ const profileNav: { label: string; Icon: LucideIcon; active: boolean }[] = [
 ];
 
 export default function ProfilePage() {
+  const router = useRouter();
+  const { profile, loading } = useCurrentUserProfile();
+  const [loggingOut, setLoggingOut] = useState(false);
   const [saved, setSaved] = useState(false);
   const [services, setServices] = useState(serviceOptions);
   const [housingTypes, setHousingTypes] = useState([
@@ -53,6 +60,22 @@ export default function ProfilePage() {
     "Minidepartamento",
   ]);
   const [budget, setBudget] = useState(800);
+
+  const initials = profile ? getInitials(profile.first_name, profile.last_name) : (loading ? "..." : "U");
+  const fullName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : (loading ? "Cargando perfil..." : "Usuario Habitat");
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      router.push('/login');
+      router.refresh();
+    } catch {
+      router.push('/login');
+    }
+  }
 
   function toggle(
     list: string[],
@@ -85,14 +108,15 @@ export default function ProfilePage() {
         <div className="mt-5 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF7CC] px-3 py-1 text-[11px] font-black text-[#8D4B00]">
-              <UserRound size={14} /> Espacio del estudiante
+              <UserRound size={14} /> {profile?.role === 'owner' ? 'Espacio del propietario' : 'Espacio del estudiante'}
             </span>
             <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-              Mi perfil estudiantil
+              {profile?.role === 'owner' ? 'Mi perfil de propietario' : 'Mi perfil estudiantil'}
             </h1>
             <p className="mt-2 text-sm text-[#554336]">
-              Gestiona tu identidad verificada, información universitaria y
-              preferencias de búsqueda.
+              {profile?.role === 'owner'
+                ? 'Gestiona tu identidad verificada de arrendador y tus datos de contacto para estudiantes.'
+                : 'Gestiona tu identidad verificada, información universitaria y preferencias de búsqueda.'}
             </p>
           </div>
           <span className="inline-flex items-center gap-2 self-start rounded-xl bg-white px-4 py-2.5 text-xs font-bold shadow-sm md:self-auto">
@@ -111,7 +135,7 @@ export default function ProfilePage() {
               <div className="relative">
                 <div className="relative mx-auto size-24">
                   <div className="grid size-full place-items-center rounded-full bg-[#FACC15] text-2xl font-black">
-                    DR
+                    {initials}
                   </div>
                   <button
                     type="button"
@@ -121,28 +145,34 @@ export default function ProfilePage() {
                     <Pencil size={14} />
                   </button>
                 </div>
-                <h2 className="mt-4 text-xl font-black">Diego Rodríguez C.</h2>
+                <h2 className="mt-4 text-xl font-black">{fullName}</h2>
                 <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#D9FBE0] px-2.5 py-1 text-[11px] font-black text-[#006E2D]">
-                  <BadgeCheck size={14} /> Estudiante verificado
+                  <BadgeCheck size={14} /> {profile?.role === 'owner' ? 'Propietario verificado' : 'Estudiante verificado'}
                 </span>
                 <p className="mt-3 text-sm font-bold">
-                  Universidad Católica de Santa María
+                  {profile?.university || (profile?.role === 'owner' ? 'Arrendador verificado' : 'Universidad no registrada')}
                 </p>
                 <p className="mt-1 text-xs text-[#554336]">
-                  Medicina Humana · 6to semestre
+                  {profile?.role === 'owner' ? 'Anfitrión verificado Habitat' : 'Estudiante acreditado'}
                 </p>
                 <div className="mt-5 space-y-2 rounded-xl bg-[#F6F2F7] p-4 text-left text-xs">
                   <p>
                     <Mail className="mr-2 inline size-4 text-[#8D4B00]" />{" "}
-                    diego.rodriguez@ucsm.edu.pe
+                    {profile?.email || (loading ? 'Cargando correo...' : 'Sin correo')}
                   </p>
+                  {profile?.phone && (
+                    <p>
+                      <Phone className="mr-2 inline size-4 text-[#8D4B00]" />{" "}
+                      {profile.phone}
+                    </p>
+                  )}
                   <p>
                     <CalendarDays className="mr-2 inline size-4 text-[#887364]" />{" "}
-                    Miembro desde agosto 2024
+                    Miembro activo
                   </p>
                   <p>
                     <ShieldCheck className="mr-2 inline size-4 text-[#006E2D]" />{" "}
-                    Identidad RENIEC validada
+                    Identidad validada por Habitat
                   </p>
                 </div>
               </div>
@@ -177,6 +207,18 @@ export default function ProfilePage() {
                   <ChevronRight size={15} />
                 </button>
               ))}
+              <div className="my-1 border-t border-[#EAE7EB]" />
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex min-h-12 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                <span className="flex items-center gap-3">
+                  <LogOut size={17} className="text-red-600" />
+                  {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+                </span>
+              </button>
             </nav>
             <div className="rounded-2xl bg-[#F0EDF1] p-4">
               <div className="flex gap-3">
@@ -208,36 +250,37 @@ export default function ProfilePage() {
               badge="Datos sincronizados"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Nombres completos" defaultValue="Diego Alonso" />
-                <Field label="Apellidos" defaultValue="Rodríguez Carpio" />
+                <Field label="Nombres completos" defaultValue={profile?.first_name || ""} />
+                <Field label="Apellidos" defaultValue={profile?.last_name || ""} />
                 <Field
                   label="Teléfono celular / WhatsApp"
-                  defaultValue="+51 958 123 456"
+                  defaultValue={profile?.phone || ""}
                   icon={Phone}
-                  verified
+                  verified={Boolean(profile?.phone)}
                 />
                 <Field
                   label="Documento de identidad (DNI)"
-                  defaultValue="72849201"
+                  defaultValue="No registrado"
                   disabled
-                  verified
                 />
                 <Field
                   label="Ciudad de procedencia"
-                  defaultValue="Puno, Perú"
+                  defaultValue={profile?.district || "Arequipa, Perú"}
                 />
                 <Field
                   label="Residiendo actualmente en"
-                  defaultValue="Arequipa (Yanahuara / Umacollo)"
+                  defaultValue="Arequipa"
                   icon={MapPin}
                 />
               </div>
             </ProfileSection>
             <ProfileSection
               icon={GraduationCap}
-              title="Validación académica universitaria"
-              subtitle="Tu identidad universitaria contrastada genera confianza con propietarios."
-              badge="SUNEDU acreditado 2025"
+              title={profile?.role === 'owner' ? "Validación de propietario" : "Validación académica universitaria"}
+              subtitle={profile?.role === 'owner'
+                ? "Tu identidad de arrendador contrastada genera confianza con estudiantes."
+                : "Tu identidad universitaria contrastada genera confianza con propietarios."}
+              badge="Acreditado 2026"
             >
               <div className="flex flex-col justify-between gap-4 rounded-xl bg-[#FFF7CC] p-4 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-3">
@@ -246,10 +289,10 @@ export default function ProfilePage() {
                   </div>
                   <div>
                     <p className="font-black">
-                      Estudiante activo con carné validado
+                      {profile?.role === 'owner' ? 'Propietario / Anfitrión verificado' : 'Estudiante activo con cuenta verificada'}
                     </p>
                     <p className="mt-1 text-xs text-[#554336]">
-                      Identidad universitaria verificada por Habitat.
+                      Identidad verificada por Habitat.
                     </p>
                   </div>
                 </div>
@@ -263,34 +306,34 @@ export default function ProfilePage() {
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl bg-[#F6F2F7] p-4 md:col-span-2">
                   <p className="text-xs font-bold text-[#887364]">
-                    Universidad actual
+                    {profile?.role === 'owner' ? 'Distrito / Zona principal' : 'Universidad actual'}
                   </p>
                   <p className="mt-2 font-black">
-                    Universidad Católica de Santa María (UCSM)
+                    {profile?.university || (profile?.role === 'owner' ? 'Arequipa' : 'Universidad no registrada')}
                   </p>
                   <p className="mt-1 text-xs text-[#554336]">
-                    Campus Principal · Umacollo, Arequipa
+                    Campus o sede universitaria principal
                   </p>
                 </div>
                 <Field
-                  label="Código de estudiante"
-                  defaultValue="2021204891"
+                  label="Rol en Habitat"
+                  defaultValue={profile?.role === 'owner' ? 'Propietario / Arrendador' : 'Estudiante universitario'}
                   disabled
                 />
                 <Field
-                  label="Correo institucional (.edu.pe)"
-                  defaultValue="diego.rodriguez@ucsm.edu.pe"
+                  label="Correo registrado"
+                  defaultValue={profile?.email || ""}
                   disabled
                   verified
                 />
                 <div className="flex items-center gap-3 rounded-xl bg-[#F6F2F7] p-3 md:col-span-2">
-                  <FileCheck2 className="text-[#BA1A1A]" size={24} />
+                  <FileCheck2 className="text-[#006E2D]" size={24} />
                   <div className="min-w-0">
                     <p className="truncate text-xs font-black">
-                      Carné_Universitario_SUNEDU_2024.pdf
+                      Identidad_Verificada_Habitat.pdf
                     </p>
                     <p className="text-[11px] text-[#887364]">
-                      1.8 MB · Validado el 12 de agosto, 2024
+                      Acreditación de identidad activa
                     </p>
                   </div>
                   <span className="ml-auto text-xs font-bold text-[#006E2D]">
@@ -518,6 +561,7 @@ function Field({
       {label}
       <div className="relative">
         <input
+          key={defaultValue}
           className={`field ${disabled ? "cursor-not-allowed bg-[#EAE7EB]" : "bg-[#F6F2F7]"} ${verified ? "pr-24" : ""}`}
           defaultValue={defaultValue}
           disabled={disabled}

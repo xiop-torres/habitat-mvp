@@ -6,8 +6,13 @@ import { Bell, CalendarDays, Check, Heart, MessageCircle, UserRound, X } from 'l
 import { BrandLogo } from '@/components/BrandLogo'
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useCurrentUserProfile, getInitials } from '@/lib/supabase/useProfile'
 
 export function AppHeader({ owner = false }: { owner?: boolean }) {
+  const { profile } = useCurrentUserProfile()
+  const initials = profile ? getInitials(profile.first_name, profile.last_name) : null
+  const displayName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : null
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
       <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
@@ -17,7 +22,18 @@ export function AppHeader({ owner = false }: { owner?: boolean }) {
         </nav>
         <div className="flex items-center gap-2">
           {!owner && <Link href="/notificaciones" aria-label="Notificaciones" className="relative grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary"><Bell size={19} /><span className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-black text-foreground ring-2 ring-background">3</span></Link>}
-          <Link href="/perfil" aria-label={owner ? 'Perfil de propietario' : 'Perfil de estudiante'} className="grid size-10 place-items-center rounded-full bg-primary text-foreground transition hover:bg-primary/80"><UserRound size={19} /></Link>
+          <Link
+            href="/perfil"
+            aria-label={displayName ? `Perfil de ${displayName}` : owner ? 'Perfil de propietario' : 'Perfil de estudiante'}
+            title={displayName || 'Mi perfil'}
+            className="grid size-10 place-items-center rounded-full bg-primary text-foreground transition hover:bg-primary/80"
+          >
+            {initials ? (
+              <span className="text-xs font-black tracking-tighter">{initials}</span>
+            ) : (
+              <UserRound size={19} />
+            )}
+          </Link>
           <Link href={owner ? '/propietario/nuevo' : '/buscar'} className="hidden rounded-xl bg-primary px-4 py-2.5 text-sm font-bold sm:inline-flex">{owner ? 'Publicar' : 'Explorar'}</Link>
         </div>
       </div>
