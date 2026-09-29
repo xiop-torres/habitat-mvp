@@ -1,16 +1,63 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Bell, CalendarDays, Check, Heart, Menu, MessageCircle, UserRound, X, Loader2, TriangleAlert } from 'lucide-react'
 import { BrandLogo } from '@/components/BrandLogo'
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useCurrentUserProfile, getInitials } from '@/lib/supabase/useProfile'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getUnreadNotificationCount } from '@/lib/supabase/notifications'
 
 export function AppHeader({ owner = false }: { owner?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { profile } = useCurrentUserProfile()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  // Realtime & fetch logic
+  useEffect(() => {
+    if (!profile) return
+
+    let isMounted = true
+
+    // Fetch initial
+    getUnreadNotificationCount().then(count => {
+      if (isMounted) setUnreadCount(count)
+    })
+
+    // Listen to custom event
+    const handleSync = () => {
+      getUnreadNotificationCount().then(count => {
+        if (isMounted) setUnreadCount(count)
+      })
+    }
+    window.addEventListener('habitat:notifications-changed', handleSync)
+
+    // Realtime channel
+    const supabase = createSupabaseBrowserClient()
+    const channel = supabase.channel(`user-notifications-${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${profile.id}`
+        },
+        () => {
+          if (isMounted) setUnreadCount(prev => prev + 1)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      isMounted = false
+      window.removeEventListener('habitat:notifications-changed', handleSync)
+      supabase.removeChannel(channel)
+    }
+  }, [profile])
+
   const initials = profile ? getInitials(profile.first_name, profile.last_name) : null
   const displayName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : null
   
@@ -43,12 +90,14 @@ export function AppHeader({ owner = false }: { owner?: boolean }) {
           </nav>
 
           <div className="flex items-center gap-2">
-            {!isOwnerView && (
-              <Link href="/notificaciones" aria-label="Notificaciones" className="relative grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary">
-                <Bell size={19} />
-                <span className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-black text-foreground ring-2 ring-background">3</span>
-              </Link>
-            )}
+            <Link href="/notificaciones" aria-label="Notificaciones" className="relative grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary">
+              <Bell size={19} />
+              {unreadCount > 0 && (
+                <span className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-black text-foreground ring-2 ring-background">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Link>
             <Link
               href="/perfil"
               aria-label={displayName ? `Perfil de ${displayName}` : isOwnerView ? 'Perfil de propietario' : 'Perfil de estudiante'}
