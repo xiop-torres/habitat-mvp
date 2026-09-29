@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { AppHeader, Footer } from '@/components/Shared'
 import HabitatMap from '@/components/HabitatMap'
+import { FavoriteButton } from '@/components/FavoriteButton'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Listing } from '@/lib/supabase/listings'
 import { getListingImageUrl } from '@/lib/supabase/storage'
@@ -471,13 +472,7 @@ function ListingCard({ listing }: { listing: any }) {
             <Check size={12} /> Verificado
           </span>
         )}
-        <button
-          type="button"
-          aria-label={`Guardar ${listing.title}`}
-          className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-white/85 text-[#52525B] shadow-sm"
-        >
-          <Heart size={15} />
-        </button>
+        <FavoriteButton listingId={listing.id} variant="card" />
       </div>
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start justify-between gap-2">

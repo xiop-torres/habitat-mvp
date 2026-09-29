@@ -19,6 +19,7 @@ import HabitatMap from '@/components/HabitatMap'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ListingWithImages } from '@/lib/supabase/listings'
 import { getListingImageUrl } from '@/lib/supabase/storage'
+import { FavoriteButton } from '@/components/FavoriteButton'
 
 
 
@@ -29,7 +30,6 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
-  const [saved, setSaved] = useState(false)
   const [visitOpen, setVisitOpen] = useState(false)
   const [toast, setToast] = useState('')
 
@@ -149,14 +149,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
             >
               <Share2 size={14} /> Compartir
             </button>
-            <button
-              type="button"
-              onClick={() => setSaved(!saved)}
-              className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold ${saved ? 'border-[#FACC15] bg-[#FFF7CC]' : 'border-[#D4D4D8] bg-white'}`}
-            >
-              <Heart size={14} className={saved ? 'fill-[#FACC15]' : ''} />
-              {saved ? 'Guardado' : 'Guardar'}
-            </button>
+            <FavoriteButton listingId={listing.id} variant="detail" />
           </div>
         </div>
 
