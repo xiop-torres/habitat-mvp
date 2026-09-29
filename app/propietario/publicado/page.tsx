@@ -1,8 +1,32 @@
 import Link from 'next/link'
 import { CheckCircle2, Eye, Share2 } from 'lucide-react'
 import { AppHeader, Footer } from '@/components/Shared'
+import { getListingById } from '@/lib/supabase/listings'
+import { getListingImageUrl } from '@/lib/supabase/storage'
+import { redirect } from 'next/navigation'
 
-export default function PublishedListingPage() {
+export default async function PublishedListingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const resolvedParams = await searchParams
+  const id = resolvedParams.id as string
+
+  if (!id) {
+    redirect('/propietario')
+  }
+
+  const listing = await getListingById(id)
+  
+  if (!listing) {
+    redirect('/propietario')
+  }
+
+  // Cover image
+  const coverImg = listing.listing_images?.find(i => i.is_cover) || listing.listing_images?.[0]
+  const coverUrl = coverImg ? getListingImageUrl(coverImg.storage_path) : null
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader owner />
@@ -11,22 +35,29 @@ export default function PublishedListingPage() {
           <div className="mx-auto grid size-20 place-items-center rounded-full bg-primary text-foreground"><CheckCircle2 size={40} /></div>
           <p className="mt-6 text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">Publicación activa</p>
           <h1 className="mt-3 text-3xl font-black sm:text-4xl">¡Tu alojamiento ya está visible!</h1>
-          <p className="mt-4 text-sm leading-7 text-muted-foreground">Los estudiantes cerca de tu universidad ya pueden encontrar tu espacio y solicitar una visita.</p>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">Los estudiantes ya pueden encontrar tu espacio y solicitar una visita.</p>
         </div>
 
         <section className="mx-auto mt-9 grid max-w-4xl gap-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:grid-cols-[220px_1fr] sm:p-6">
-          <img src="/habitat-room.png" alt="Alojamiento publicado" className="h-52 w-full rounded-2xl object-cover sm:h-full" />
+          {coverUrl ? (
+            <img src={coverUrl} alt={listing.title} className="h-52 w-full rounded-2xl object-cover sm:h-full bg-zinc-100 border border-dashed border-zinc-200" />
+          ) : (
+            <div className="flex h-52 w-full items-center justify-center rounded-2xl bg-zinc-100 border border-dashed border-zinc-200 text-xs text-muted-foreground sm:h-full">
+              Sin imagen
+            </div>
+          )}
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">Activo y visible</span>
-              <span className="rounded-full bg-primary/25 px-3 py-1 text-xs font-black">Verificado Habitat</span>
+              {listing.verified && <span className="rounded-full bg-primary/25 px-3 py-1 text-xs font-black">Verificado Habitat</span>}
             </div>
-            <h2 className="mt-4 text-xl font-black">Habitación privada amoblada cerca de la UCSM</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Yanahuara, Arequipa · A 1.2 km del campus</p>
-            <p className="mt-4 text-2xl font-black">S/ 650 <span className="text-xs font-normal text-muted-foreground">/ mes</span></p>
+            <h2 className="mt-4 text-xl font-black">{listing.title}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {listing.district}{listing.university_nearby ? ` · Cerca de ${listing.university_nearby}` : ''}
+            </p>
+            <p className="mt-4 text-2xl font-black">S/ {listing.price_monthly.toFixed(0)} <span className="text-xs font-normal text-muted-foreground">/ mes</span></p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-black"><Share2 size={16} /> Compartir publicación</button>
-              <Link href="/alojamiento/1" className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold"><Eye size={16} /> Ver ficha pública</Link>
+              <Link href={`/alojamiento/${listing.id}`} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold"><Eye size={16} /> Ver ficha pública</Link>
             </div>
           </div>
         </section>

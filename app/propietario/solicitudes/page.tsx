@@ -145,13 +145,13 @@ export default function RequestsPage() {
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex gap-2 overflow-x-auto">
+              <div className="flex max-w-full gap-1.5 overflow-x-auto pb-2 sm:gap-2 sm:pb-0">
                 {['Pendientes (4)', 'Confirmadas (6)', 'Completadas (18)', 'Canceladas (3)'].map((item, index) => (
                   <button
                     key={item}
                     type="button"
                     className={cn(
-                      'min-h-10 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold transition',
+                      'min-h-9 sm:min-h-10 shrink-0 whitespace-nowrap rounded-xl px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold transition',
                       index === 0 ? 'bg-primary text-foreground shadow-sm' : 'bg-secondary text-muted-foreground hover:text-foreground',
                     )}
                   >

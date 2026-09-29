@@ -2,42 +2,119 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { Bell, CalendarDays, Check, Heart, MessageCircle, UserRound, X } from 'lucide-react'
+import { Bell, CalendarDays, Check, Heart, Menu, MessageCircle, UserRound, X } from 'lucide-react'
 import { BrandLogo } from '@/components/BrandLogo'
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useCurrentUserProfile, getInitials } from '@/lib/supabase/useProfile'
 
 export function AppHeader({ owner = false }: { owner?: boolean }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const { profile } = useCurrentUserProfile()
   const initials = profile ? getInitials(profile.first_name, profile.last_name) : null
   const displayName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : null
+  
+  // Prefer real role if available, fallback to prop during initial load
+  const isOwnerView = profile ? profile.role === 'owner' : owner
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <BrandLogo compact />
-        <nav className="hidden items-center gap-5 text-sm font-semibold text-muted-foreground md:flex">
-          {owner ? <><Link href="/propietario">Panel</Link><Link href="/propietario/solicitudes">Solicitudes</Link><Link href="/mensajes">Mensajes</Link></> : <><Link href="/buscar">Buscar</Link><Link href="/favoritos">Favoritos</Link><Link href="/visitas">Mis visitas</Link><Link href="/mensajes">Mensajes</Link></>}
-        </nav>
-        <div className="flex items-center gap-2">
-          {!owner && <Link href="/notificaciones" aria-label="Notificaciones" className="relative grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary"><Bell size={19} /><span className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-black text-foreground ring-2 ring-background">3</span></Link>}
-          <Link
-            href="/perfil"
-            aria-label={displayName ? `Perfil de ${displayName}` : owner ? 'Perfil de propietario' : 'Perfil de estudiante'}
-            title={displayName || 'Mi perfil'}
-            className="grid size-10 place-items-center rounded-full bg-primary text-foreground transition hover:bg-primary/80"
-          >
-            {initials ? (
-              <span className="text-xs font-black tracking-tighter">{initials}</span>
+    <>
+      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+          <BrandLogo compact />
+          
+          {/* Desktop Nav */}
+          <nav className="hidden items-center gap-5 text-sm font-semibold text-muted-foreground md:flex">
+            {isOwnerView ? (
+              <>
+                <Link href="/propietario">Panel</Link>
+                <Link href="/buscar">Buscar</Link>
+                <Link href="/propietario/solicitudes">Solicitudes</Link>
+                <Link href="/mensajes">Mensajes</Link>
+              </>
             ) : (
-              <UserRound size={19} />
+              <>
+                <Link href="/buscar">Buscar</Link>
+                <Link href="/favoritos">Favoritos</Link>
+                <Link href="/visitas">Mis visitas</Link>
+                <Link href="/mensajes">Mensajes</Link>
+              </>
             )}
-          </Link>
-          <Link href={owner ? '/propietario/nuevo' : '/buscar'} className="hidden rounded-xl bg-primary px-4 py-2.5 text-sm font-bold sm:inline-flex">{owner ? 'Publicar' : 'Explorar'}</Link>
+          </nav>
+
+          <div className="flex items-center gap-2">
+            {!isOwnerView && (
+              <Link href="/notificaciones" aria-label="Notificaciones" className="relative grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary">
+                <Bell size={19} />
+                <span className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-black text-foreground ring-2 ring-background">3</span>
+              </Link>
+            )}
+            <Link
+              href="/perfil"
+              aria-label={displayName ? `Perfil de ${displayName}` : isOwnerView ? 'Perfil de propietario' : 'Perfil de estudiante'}
+              title={displayName || 'Mi perfil'}
+              className="grid size-10 place-items-center rounded-full bg-primary text-foreground transition hover:bg-primary/80"
+            >
+              {initials ? (
+                <span className="text-xs font-black tracking-tighter">{initials}</span>
+              ) : (
+                <UserRound size={19} />
+              )}
+            </Link>
+            
+            {/* Hamburger (Mobile) */}
+            <button
+              type="button"
+              aria-label="Abrir menú"
+              className="grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary md:hidden"
+              onClick={() => setMenuOpen(true)}
+            >
+              <Menu size={19} />
+            </button>
+
+            {/* Desktop CTA */}
+            <Link href={isOwnerView ? '/propietario/nuevo' : '/buscar'} className="hidden rounded-xl bg-primary px-4 py-2.5 text-sm font-bold sm:inline-flex">
+              {isOwnerView ? 'Publicar' : 'Explorar'}
+            </Link>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Mobile Menu */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur md:hidden">
+          <div className="flex min-h-16 items-center justify-between border-b border-border px-4 sm:px-6">
+            <BrandLogo compact />
+            <button
+              type="button"
+              aria-label="Cerrar menú"
+              className="grid size-10 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary"
+              onClick={() => setMenuOpen(false)}
+            >
+              <X size={19} />
+            </button>
+          </div>
+          <nav className="flex flex-col gap-6 p-6 text-lg font-bold">
+            {isOwnerView ? (
+              <>
+                <Link href="/propietario" onClick={() => setMenuOpen(false)}>Panel</Link>
+                <Link href="/buscar" onClick={() => setMenuOpen(false)}>Buscar</Link>
+                <Link href="/propietario/solicitudes" onClick={() => setMenuOpen(false)}>Solicitudes</Link>
+                <Link href="/mensajes" onClick={() => setMenuOpen(false)}>Mensajes</Link>
+                <Link href="/propietario/nuevo" onClick={() => setMenuOpen(false)} className="mt-4 text-primary">Publicar alojamiento</Link>
+              </>
+            ) : (
+              <>
+                <Link href="/buscar" onClick={() => setMenuOpen(false)}>Buscar</Link>
+                <Link href="/favoritos" onClick={() => setMenuOpen(false)}>Favoritos</Link>
+                <Link href="/visitas" onClick={() => setMenuOpen(false)}>Mis visitas</Link>
+                <Link href="/mensajes" onClick={() => setMenuOpen(false)}>Mensajes</Link>
+              </>
+            )}
+          </nav>
+        </div>
+      )}
+    </>
   )
 }
 

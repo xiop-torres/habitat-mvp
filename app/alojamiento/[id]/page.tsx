@@ -18,9 +18,9 @@ import { AppHeader, Footer, Toast, VisitRequestModal } from '@/components/Shared
 import HabitatMap from '@/components/HabitatMap'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ListingWithImages } from '@/lib/supabase/listings'
+import { getListingImageUrl } from '@/lib/supabase/storage'
 
-// Placeholder images rotativas hasta que Storage esté implementado
-const PLACEHOLDER_IMAGES = ['/habitat-room.png', '/habitat-hero.png', '/placeholder.jpg', '/habitat-room.png', '/habitat-hero.png']
+
 
 export default function PropertyDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -102,9 +102,19 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
 
   // ── Datos reales ─────────────────────────────────────────────────────────────
   const hasRealImages = listing.listing_images && listing.listing_images.length > 0
+  
+  // Ordenar priorizando la portada y luego el sort_order
+  const sortedImages = hasRealImages 
+    ? [...listing.listing_images].sort((a, b) => {
+        if (a.is_cover) return -1
+        if (b.is_cover) return 1
+        return a.sort_order - b.sort_order
+      })
+    : []
+
   const galleryImages = hasRealImages
-    ? listing.listing_images.map((img) => img.storage_path)
-    : PLACEHOLDER_IMAGES
+    ? sortedImages.map((img) => getListingImageUrl(img.storage_path))
+    : [] // vacío si no hay reales
 
   const hasCoordinates = listing.lat !== null && listing.lng !== null
   const mapHomes = hasCoordinates
@@ -199,24 +209,63 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
               Las fotos reales del alojamiento estarán disponibles próximamente.
             </div>
           )}
-          <div className="grid h-[300px] gap-2 sm:h-[420px] md:h-[500px] md:grid-cols-4 md:grid-rows-2">
-            <div className="relative overflow-hidden md:col-span-2 md:row-span-2">
-              <img src={galleryImages[0]} alt={listing.title} className="size-full object-cover transition duration-500 hover:scale-105" />
-            </div>
-            {[1, 2, 3, 4].map((index) => (
-              <div key={index} className="relative hidden overflow-hidden md:block">
-                <img
-                  src={galleryImages[index] ?? PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length]}
-                  alt={`Vista ${index + 1}`}
-                  className={`size-full object-cover transition duration-500 hover:scale-105 ${index === 4 ? 'brightness-75' : ''}`}
-                />
-                {index === 4 && (
-                  <span className="absolute inset-0 grid place-items-center text-lg font-black text-white">
-                    Ver fotos
-                  </span>
-                )}
+          
+          <div className="h-[300px] sm:h-[420px] md:h-[500px]">
+            {galleryImages.length === 0 && (
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-zinc-100 text-zinc-400">
+                Sin foto principal
               </div>
-            ))}
+            )}
+
+            {galleryImages.length === 1 && (
+              <div className="relative h-full w-full overflow-hidden rounded-xl bg-zinc-100">
+                <img src={galleryImages[0]} alt={listing.title} className="size-full object-cover transition duration-500 hover:scale-105" />
+              </div>
+            )}
+
+            {galleryImages.length === 2 && (
+              <div className="grid h-full grid-cols-2 gap-2">
+                <div className="relative overflow-hidden rounded-l-xl bg-zinc-100"><img src={galleryImages[0]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative overflow-hidden rounded-r-xl bg-zinc-100"><img src={galleryImages[1]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+              </div>
+            )}
+
+            {galleryImages.length === 3 && (
+              <div className="grid h-full grid-cols-2 grid-rows-2 gap-2">
+                <div className="relative row-span-2 overflow-hidden rounded-l-xl bg-zinc-100"><img src={galleryImages[0]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative overflow-hidden rounded-tr-xl bg-zinc-100"><img src={galleryImages[1]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative overflow-hidden rounded-br-xl bg-zinc-100"><img src={galleryImages[2]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+              </div>
+            )}
+
+            {galleryImages.length === 4 && (
+              <div className="grid h-full grid-cols-2 grid-rows-2 gap-2">
+                <div className="relative overflow-hidden rounded-tl-xl bg-zinc-100"><img src={galleryImages[0]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative overflow-hidden rounded-tr-xl bg-zinc-100"><img src={galleryImages[1]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative overflow-hidden rounded-bl-xl bg-zinc-100"><img src={galleryImages[2]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative overflow-hidden rounded-br-xl bg-zinc-100"><img src={galleryImages[3]} alt={listing.title} className="size-full object-cover transition hover:scale-105" /></div>
+              </div>
+            )}
+
+            {galleryImages.length >= 5 && (
+              <div className="grid h-full gap-2 md:grid-cols-4 md:grid-rows-2">
+                <div className="relative overflow-hidden rounded-xl bg-zinc-100 md:col-span-2 md:row-span-2 md:rounded-l-xl md:rounded-r-none">
+                  <img src={galleryImages[0]} alt={listing.title} className="size-full object-cover transition duration-500 hover:scale-105" />
+                </div>
+                
+                <div className="relative hidden overflow-hidden bg-zinc-100 md:block"><img src={galleryImages[1]} alt="Vista" className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative hidden overflow-hidden rounded-tr-xl bg-zinc-100 md:block"><img src={galleryImages[2]} alt="Vista" className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative hidden overflow-hidden bg-zinc-100 md:block"><img src={galleryImages[3]} alt="Vista" className="size-full object-cover transition hover:scale-105" /></div>
+                <div className="relative hidden overflow-hidden rounded-br-xl bg-zinc-100 md:block">
+                  <img src={galleryImages[4]} alt="Vista" className={`size-full object-cover transition hover:scale-105 ${galleryImages.length > 5 ? 'brightness-75' : ''}`} />
+                  {galleryImages.length > 5 && (
+                    <span className="absolute inset-0 grid place-items-center text-lg font-black text-white">
+                      +{galleryImages.length - 5}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

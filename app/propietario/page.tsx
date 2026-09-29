@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { mockConversations, mockRequests } from '@/lib/mocks'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Listing } from '@/lib/supabase/listings'
+import { getListingImageUrl } from '@/lib/supabase/storage'
 
 // Estadísticas demo por listing (todavía no provienen de Supabase — se implementarán en 4D/4E)
 const DEMO_STATS = { views: 0, requests: 0, visits: 0 }
@@ -70,12 +71,12 @@ export default function OwnerDashboard() {
       // Cargar listings reales del owner autenticado (RLS garantiza aislamiento)
       const { data, error } = await supabase
         .from('listings')
-        .select('*')
+        .select('*, listing_images(*)')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
 
       if (!error && data) {
-        setListings(data as Listing[])
+        setListings(data as any) // o (data as ListingWithImages[])
       }
 
       setLoadingListings(false)
@@ -265,9 +266,15 @@ export default function OwnerDashboard() {
             )}
 
             <div className="space-y-5">
-              {visibleListings.map((listing) => {
+              {visibleListings.map((listing: any) => {
                 const isPaused = listing.status === 'paused'
                 const isUpdating = updating[listing.id]
+                
+                let coverUrl = null
+                if (listing.listing_images && listing.listing_images.length > 0) {
+                   const coverImg = listing.listing_images.find((i: any) => i.is_cover) || listing.listing_images[0]
+                   if (coverImg) coverUrl = getListingImageUrl(coverImg.storage_path)
+                }
 
                 return (
                   <article
@@ -277,9 +284,12 @@ export default function OwnerDashboard() {
                       isPaused ? 'border-dashed border-border opacity-80' : 'border-border',
                     )}
                   >
-                    {/* Imagen placeholder hasta que se implemente Storage */}
                     <div className={cn('relative h-56 bg-secondary sm:h-auto', isPaused && 'grayscale')}>
-                      <img src="/habitat-room.png" alt={listing.title} className="h-full w-full object-cover" />
+                      {coverUrl ? (
+                        <img src={coverUrl} alt={listing.title} className="h-full w-full object-cover bg-zinc-100" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-xs text-muted-foreground border-r border-border">Sin imagen</div>
+                      )}
                       <span
                         className={cn(
                           'absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black',

@@ -19,14 +19,14 @@ import { AppHeader, Footer } from '@/components/Shared'
 import HabitatMap from '@/components/HabitatMap'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Listing } from '@/lib/supabase/listings'
+import { getListingImageUrl } from '@/lib/supabase/storage'
 
 // Filtros de UI — se aplican client-side sobre los datos reales
 const universityFilters = ['UCSM', 'UNSA', 'Universidad Católica San Pablo', 'UTP', 'La Salle']
 const accommodationFilters = ['Habitación individual', 'Habitación compartida', 'Departamento', 'Casa / Residencia']
 const serviceFilters = ['WiFi', 'Agua caliente', 'Cocina equipada', 'Lavandería', 'Amoblado', 'Baño privado']
 
-// Imagen placeholder rotativa hasta que Storage esté implementado
-const PLACEHOLDER_IMAGES = ['/habitat-room.png', '/habitat-hero.png', '/placeholder.jpg']
+
 
 // Posiciones demo para el mapa (hasta que se implemente geocoding en 4E)
 const mapPositions = [
@@ -70,7 +70,7 @@ export default function ListingsPage({
         const supabase = createSupabaseBrowserClient()
         const { data, error } = await supabase
           .from('listings')
-          .select('*')
+          .select('*, listing_images(*)')
           .eq('status', 'published')
           .order('created_at', { ascending: false })
           .limit(100)
@@ -78,7 +78,7 @@ export default function ListingsPage({
         if (error) {
           setFetchError('No se pudieron cargar los alojamientos. Intenta de nuevo.')
         } else {
-          setAllListings((data ?? []) as Listing[])
+          setAllListings((data ?? []) as any) // o ListingWithImages[]
         }
       } catch {
         setFetchError('Error de conexión. Por favor recarga la página.')
@@ -351,11 +351,10 @@ export default function ListingsPage({
             {/* Results */}
             {!loading && !fetchError && rooms.length > 0 && (
               <div className="grid gap-5 sm:grid-cols-2">
-                {rooms.map((listing, index) => (
+                {rooms.map((listing) => (
                   <ListingCard
                     key={listing.id}
                     listing={listing}
-                    image={PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length]}
                   />
                 ))}
               </div>
@@ -446,15 +445,27 @@ function CheckFilter({
   )
 }
 
-function ListingCard({ listing, image }: { listing: Listing; image: string }) {
+function ListingCard({ listing }: { listing: any }) {
+  let coverUrl = null
+  if (listing.listing_images && listing.listing_images.length > 0) {
+    const coverImg = listing.listing_images.find((i: any) => i.is_cover) || listing.listing_images[0]
+    if (coverImg) coverUrl = getListingImageUrl(coverImg.storage_path)
+  }
+
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-[#E4E4E7] bg-white shadow-[0_2px_10px_-2px_rgba(0,0,0,0.05)] transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="relative h-44 overflow-hidden bg-[#E4E4E7]">
-        <img
-          src={image}
-          alt={listing.title}
-          className="size-full object-cover transition duration-300 group-hover:scale-105"
-        />
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt={listing.title}
+            className="size-full object-cover transition duration-300 group-hover:scale-105 bg-zinc-100"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-xs font-medium text-zinc-400">
+            Sin imagen
+          </div>
+        )}
         {listing.verified && (
           <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#047857]/90 px-2.5 py-1 text-[11px] font-black text-white">
             <Check size={12} /> Verificado
@@ -483,7 +494,7 @@ function ListingCard({ listing, image }: { listing: Listing; image: string }) {
         </p>
         {listing.amenities.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {listing.amenities.slice(0, 3).map((item) => (
+            {listing.amenities.slice(0, 3).map((item: string) => (
               <span key={item} className="rounded bg-[#F4F2EB] px-2 py-0.5 text-[10px] font-semibold text-[#52525B]">
                 {item}
               </span>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { use, useEffect, useState } from 'react'
+import { use, useEffect, useState, useRef } from 'react'
 import {
   Archive,
   ArrowLeft,
@@ -30,6 +30,7 @@ import { AppHeader, Footer } from '@/components/Shared'
 import HabitatMap from '@/components/HabitatMap'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Listing } from '@/lib/supabase/listings'
+import { STORAGE_BUCKETS, STORAGE_LIMITS, getListingStoragePath, getListingImageUrl } from '@/lib/supabase/storage'
 
 const allAmenities = ['WiFi', 'Baño privado', 'Escritorio amplio', 'Agua caliente', 'Cocina equipada', 'Lavandería', 'Bicicletero', 'Acepta mascotas', 'Amoblado']
 const photos = [
@@ -62,6 +63,12 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([])
   const [availableFrom, setAvailableFrom] = useState('')
 
+  // Image state
+  const [existingPhotos, setExistingPhotos] = useState<{ id: string, storage_path: string, preview: string, is_cover: boolean, sort_order: number }[]>([])
+  const [newPhotos, setNewPhotos] = useState<{ file: File; preview: string }[]>([])
+  const [deletedPhotoIds, setDeletedPhotoIds] = useState<string[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // Cargar listing real y validar permisos
   useEffect(() => {
     async function loadListing() {
@@ -84,7 +91,7 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       // 2. Obtener listing (RLS permite select a dueños)
       const { data, error } = await supabase
         .from('listings')
-        .select('*')
+        .select('*, listing_images(*)')
         .eq('id', id)
         .maybeSingle()
 
@@ -112,10 +119,69 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       setSelectedAmenities(data.amenities || [])
       setAvailableFrom(data.available_from || '')
 
+      if (data.listing_images) {
+        const sortedImages = data.listing_images.sort((a: any, b: any) => a.sort_order - b.sort_order)
+        setExistingPhotos(
+          sortedImages.map((img: any) => ({
+            id: img.id,
+            storage_path: img.storage_path,
+            preview: getListingImageUrl(img.storage_path),
+            is_cover: img.is_cover,
+            sort_order: img.sort_order,
+          }))
+        )
+      }
+
       setLoading(false)
     }
     loadListing()
   }, [id, router])
+
+  useEffect(() => {
+    return () => newPhotos.forEach(p => URL.revokeObjectURL(p.preview))
+  }, [newPhotos])
+
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+
+    const totalCurrent = existingPhotos.filter(p => !deletedPhotoIds.includes(p.id)).length + newPhotos.length
+    if (totalCurrent + files.length > STORAGE_LIMITS.MAX_FILES_PER_LISTING) {
+      setToast(`Solo puedes tener hasta ${STORAGE_LIMITS.MAX_FILES_PER_LISTING} fotos totales.`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const validFiles: { file: File; preview: string }[] = []
+    for (const file of files) {
+      if (!STORAGE_LIMITS.ALLOWED_MIME_TYPES.includes(file.type as any)) {
+        setToast(`El archivo "${file.name}" no es válido.`)
+        continue
+      }
+      if (file.size > STORAGE_LIMITS.MAX_FILE_SIZE_BYTES) {
+        setToast(`El archivo "${file.name}" supera el límite de ${STORAGE_LIMITS.MAX_FILE_SIZE_MB}MB.`)
+        continue
+      }
+      validFiles.push({ file, preview: URL.createObjectURL(file) })
+    }
+
+    setNewPhotos(prev => [...prev, ...validFiles])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function removeExistingPhoto(id: string) {
+    if (!confirm('¿Seguro que deseas eliminar esta foto? Los cambios se aplicarán al guardar.')) return
+    setDeletedPhotoIds(prev => [...prev, id])
+  }
+
+  function removeNewPhoto(index: number) {
+    setNewPhotos(prev => {
+      const copy = [...prev]
+      URL.revokeObjectURL(copy[index].preview)
+      copy.splice(index, 1)
+      return copy
+    })
+  }
 
   function toggleAmenity(amenity: string) {
     setSelectedAmenities(current =>
@@ -126,6 +192,12 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
   async function saveChanges(event: React.FormEvent) {
     event.preventDefault()
     if (saving || !listing) return
+
+    const totalPhotos = existingPhotos.filter(p => !deletedPhotoIds.includes(p.id)).length + newPhotos.length
+    if (totalPhotos === 0) {
+      setToast('Debes mantener al menos 1 fotografía.')
+      return
+    }
 
     setSaving(true)
     setErrorMsg('')
@@ -148,10 +220,81 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       .update(updates)
       .eq('id', listing.id)
 
+    if (error) {
+      setSaving(false)
+      setToast('Hubo un error al guardar. Intenta de nuevo.')
+      return
+    }
+
+    let imageError = false
+    
+    // Deletions
+    if (deletedPhotoIds.length > 0) {
+      const photosToDelete = existingPhotos.filter(p => deletedPhotoIds.includes(p.id))
+      for (const p of photosToDelete) {
+        const { error: storageError } = await supabase.storage.from(STORAGE_BUCKETS.LISTINGS).remove([p.storage_path])
+        if (storageError) {
+          console.error('Storage deletion error:', storageError)
+          imageError = true
+        } else {
+          const { error: dbError } = await supabase.from('listing_images').delete().eq('id', p.id)
+          if (dbError) {
+            console.error('DB image deletion error:', dbError)
+            imageError = true
+          }
+        }
+      }
+    }
+
+    // Uploads
+    if (newPhotos.length > 0) {
+      for (const photo of newPhotos) {
+        const path = getListingStoragePath(listing.owner_id, listing.id, photo.file.name)
+        const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKETS.LISTINGS).upload(path, photo.file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+        
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError)
+          imageError = true
+        } else {
+          const { error: dbError } = await supabase.from('listing_images').insert({
+            listing_id: listing.id,
+            storage_path: path,
+            sort_order: 999, // Se corrige en el reordenamiento a continuación
+            is_cover: false
+          })
+          if (dbError) {
+             console.error('DB image insert error:', dbError)
+             imageError = true
+          }
+        }
+      }
+    }
+
+    // Reordenamiento y Cover (sort_order y is_cover)
+    if (deletedPhotoIds.length > 0 || newPhotos.length > 0) {
+      const { data: currentImages } = await supabase.from('listing_images').select('*').eq('listing_id', listing.id).order('sort_order')
+      if (currentImages && currentImages.length > 0) {
+        let hasCover = false
+        for (let i = 0; i < currentImages.length; i++) {
+          const img = currentImages[i]
+          const shouldBeCover = !hasCover && (img.is_cover || i === 0)
+          if (shouldBeCover) hasCover = true
+          
+          if (img.sort_order !== i || img.is_cover !== shouldBeCover) {
+            await supabase.from('listing_images').update({ sort_order: i, is_cover: shouldBeCover }).eq('id', img.id)
+          }
+        }
+      }
+    }
+
     setSaving(false)
 
-    if (error) {
-      setToast('Hubo un error al guardar. Intenta de nuevo.')
+    if (imageError) {
+      setToast('Alojamiento guardado, pero hubo un error con algunas imágenes.')
+      setTimeout(() => setSaved(true), 1500)
     } else {
       setToast('¡Alojamiento actualizado!')
       setTimeout(() => setSaved(true), 700)
@@ -319,21 +462,66 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
               </label>
             </EditorSection>
 
-            {/* Fotos - Placeholder para Storage */}
-            <EditorSection id="fotos" icon={ImagePlus} title="Galería de fotos del alojamiento" subtitle="Organiza tus fotos (Próximamente)">
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
-                La subida de imágenes estará disponible pronto.
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 opacity-50 pointer-events-none">
-                {photos.map((photo, index) => (
-                  <div key={`${photo.label}-${index}`} className="group relative overflow-hidden rounded-xl bg-[#EAE7EB] aspect-[4/3]">
-                    <img src={photo.src} alt={photo.label} className="size-full object-cover transition duration-300" />
-                    <div className="absolute inset-x-2 bottom-2 flex items-center justify-between">
-                      <span className="rounded bg-black/65 px-2 py-1 text-[10px] font-bold text-white">{index === 0 ? 'Foto principal' : photo.label}</span>
-                    </div>
+            {/* Fotos */}
+            <EditorSection id="fotos" icon={ImagePlus} title="Galería de fotos del alojamiento" subtitle={`Máximo ${STORAGE_LIMITS.MAX_FILES_PER_LISTING} imágenes totales. Agrega, elimina y guarda los cambios.`}>
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                {/* Existing Photos */}
+                {existingPhotos.filter(p => !deletedPhotoIds.includes(p.id)).map((photo, index) => (
+                  <div key={photo.id} className="group relative overflow-hidden rounded-xl bg-[#EAE7EB] aspect-[4/3]">
+                    <img src={photo.preview} alt={`Foto ${index + 1}`} className="size-full object-cover transition duration-300" />
+                    {photo.is_cover && (
+                      <span className="absolute left-2 top-2 rounded bg-[#FACC15] px-2 py-1 text-[10px] font-bold text-black shadow-sm">Portada</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeExistingPhoto(photo.id)}
+                      className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 ))}
+
+                {/* New Photos */}
+                {newPhotos.map((photo, index) => (
+                  <div key={photo.preview} className="group relative overflow-hidden rounded-xl bg-[#EAE7EB] aspect-[4/3]">
+                    <img src={photo.preview} alt={`Nueva foto ${index + 1}`} className="size-full object-cover transition duration-300" />
+                    <span className="absolute left-2 top-2 rounded bg-emerald-500 px-2 py-1 text-[10px] font-bold text-white shadow-sm">Nueva</span>
+                    <button
+                      type="button"
+                      onClick={() => removeNewPhoto(index)}
+                      className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Subir Nueva (si no supera el límite) */}
+                {existingPhotos.filter(p => !deletedPhotoIds.includes(p.id)).length + newPhotos.length < STORAGE_LIMITS.MAX_FILES_PER_LISTING && (
+                  <label className="grid cursor-pointer place-items-center rounded-xl border-2 border-dashed border-[#D4D4D8] bg-[#F6F2F7] text-sm font-bold transition-colors hover:bg-zinc-100 aspect-[4/3]">
+                    <div className="flex flex-col items-center text-[#554336]">
+                      <ImagePlus className="mb-2 text-[#8D4B00]" size={24} />
+                      <span>Añadir foto</span>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept={STORAGE_LIMITS.ALLOWED_MIME_TYPES.join(',')}
+                      multiple
+                      onChange={handlePhotoSelect}
+                      className="hidden"
+                    />
+                  </label>
+                )}
               </div>
+              
+              {existingPhotos.filter(p => !deletedPhotoIds.includes(p.id)).length + newPhotos.length === 0 && (
+                <div className="mt-2 text-sm text-amber-700 font-bold bg-amber-50 p-3 rounded-lg border border-amber-200">
+                  <TriangleAlert size={16} className="inline mr-1" />
+                  Al menos debes dejar 1 foto antes de guardar.
+                </div>
+              )}
             </EditorSection>
 
             {/* Servicios */}

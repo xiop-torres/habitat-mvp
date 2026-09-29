@@ -20,6 +20,7 @@ import { AppHeader, Footer } from '@/components/Shared'
 import { cn } from '@/lib/utils'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { CreateListingInput } from '@/lib/supabase/listings'
+import { STORAGE_BUCKETS, STORAGE_LIMITS, getListingStoragePath } from '@/lib/supabase/storage'
 
 const steps = ['Tipo', 'Detalles', 'Ubicación', 'Universidad', 'Precio', 'Servicios', 'Fotos', 'Plazos', 'Reglas', 'Vista previa']
 const stepTitles = [
@@ -110,7 +111,60 @@ export default function NewPropertyPage() {
   // Step 5 — Servicios (amenities)
   const [services, setServices] = useState<string[]>([])
 
-  // Step 6 — Fotos (solo UI, sin Storage todavía)
+  // Step 6 — Fotos
+  const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+
+    if (photos.length + files.length > STORAGE_LIMITS.MAX_FILES_PER_LISTING) {
+      setFormError(`Solo puedes subir hasta ${STORAGE_LIMITS.MAX_FILES_PER_LISTING} fotos.`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const newPhotos: { file: File; preview: string }[] = []
+    for (const file of files) {
+      if (!STORAGE_LIMITS.ALLOWED_MIME_TYPES.includes(file.type as any)) {
+        setFormError(`El archivo "${file.name}" no es válido. Solo se admiten JPEG, PNG y WEBP.`)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+      if (file.size > STORAGE_LIMITS.MAX_FILE_SIZE_BYTES) {
+        setFormError(`El archivo "${file.name}" supera el límite de ${STORAGE_LIMITS.MAX_FILE_SIZE_MB}MB.`)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+      newPhotos.push({
+        file,
+        preview: URL.createObjectURL(file)
+      })
+    }
+
+    setPhotos(prev => [...prev, ...newPhotos])
+    setFormError('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function removePhoto(index: number) {
+    setPhotos(prev => {
+      const newPhotos = [...prev]
+      URL.revokeObjectURL(newPhotos[index].preview)
+      newPhotos.splice(index, 1)
+      return newPhotos
+    })
+  }
+
+  useEffect(() => {
+    // Cleanup object URLs on unmount
+    return () => {
+      photos.forEach(p => URL.revokeObjectURL(p.preview))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Step 7 — Plazos
   const [availableFrom, setAvailableFrom] = useState('')
 
@@ -143,6 +197,9 @@ export default function NewPropertyPage() {
     if (step === 4) {
       const p = Number(price)
       if (!price || isNaN(p) || p <= 0) return 'El precio mensual debe ser mayor a 0.'
+    }
+    if (step === 6) {
+      if (photos.length === 0) return 'Sube al menos 1 fotografía.'
     }
     return ''
   }
@@ -192,18 +249,58 @@ export default function NewPropertyPage() {
         available_from: availableFrom || null,
       }
 
-      const { data, error } = await supabase
+      const { data: listingData, error: listingError } = await supabase
         .from('listings')
         .insert({ ...input, status: 'published' })
         .select('id')
         .single()
 
-      if (error) {
-        setFormError(error.message || 'No se pudo publicar el alojamiento. Intenta de nuevo.')
+      if (listingError) {
+        setFormError(listingError.message || 'No se pudo publicar el alojamiento. Intenta de nuevo.')
         return
       }
 
-      router.push(`/propietario/publicado?id=${data.id}`)
+      let imageUploadError = false
+
+      if (photos.length > 0) {
+        for (let i = 0; i < photos.length; i++) {
+          const photo = photos[i]
+          const path = getListingStoragePath(user.id, listingData.id, photo.file.name)
+
+          const { error: uploadError } = await supabase.storage
+            .from(STORAGE_BUCKETS.LISTINGS)
+            .upload(path, photo.file, {
+              cacheControl: '3600',
+              upsert: false
+            })
+
+          if (uploadError) {
+            console.error('[Storage Upload Error]:', uploadError)
+            imageUploadError = true
+            continue
+          }
+
+          const { error: dbError } = await supabase
+            .from('listing_images')
+            .insert({
+              listing_id: listingData.id,
+              storage_path: path,
+              sort_order: i,
+              is_cover: i === 0,
+            })
+
+          if (dbError) {
+            console.error('[Listing Image DB Error]:', dbError)
+            imageUploadError = true
+          }
+        }
+      }
+
+      if (imageUploadError) {
+        alert('El alojamiento fue publicado, pero ocurrió un problema subiendo algunas fotos. Podrás gestionarlas más adelante desde tu panel.')
+      }
+
+      router.push(`/propietario/publicado?id=${listingData.id}`)
     } catch {
       setFormError('Ocurrió un error inesperado. Intenta de nuevo.')
     } finally {
@@ -412,23 +509,45 @@ export default function NewPropertyPage() {
                 </div>
               )}
 
-              {/* PASO 6 — Fotos (UI visual sin Storage) */}
+              {/* PASO 6 — Fotos (Subida real a Storage) */}
               {step === 6 && (
                 <div className="grid gap-4">
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-                    <strong>Carga de fotos próximamente.</strong> La subida real de imágenes estará disponible en la siguiente versión de Habitat. Por ahora puedes continuar publicando tu alojamiento sin fotos.
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                    Sube hasta {STORAGE_LIMITS.MAX_FILES_PER_LISTING} fotos de tu alojamiento (máx {STORAGE_LIMITS.MAX_FILE_SIZE_MB}MB c/u). La primera imagen será la portada.
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-3 opacity-50 pointer-events-none select-none">
-                    <div className="relative overflow-hidden rounded-2xl">
-                      <img src="/habitat-room.png" alt="Foto principal" className="h-48 w-full object-cover" />
-                      <span className="absolute left-2 top-2 rounded bg-primary px-2 py-1 text-[10px] font-bold">Portada</span>
-                    </div>
-                    <div className="overflow-hidden rounded-2xl">
-                      <img src="/habitat-hero.png" alt="Zona de estudio" className="h-48 w-full object-cover" />
-                    </div>
-                    <button type="button" disabled className="grid min-h-48 place-items-center rounded-2xl border-2 border-dashed border-zinc-300 bg-secondary text-sm font-bold">
-                      <ImagePlus className="mb-2 text-yellow-700" />Subir foto
-                    </button>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    {photos.map((photo, index) => (
+                      <div key={photo.preview} className="group relative overflow-hidden rounded-2xl">
+                        <img src={photo.preview} alt={`Foto ${index + 1}`} className="h-48 w-full object-cover" />
+                        {index === 0 && (
+                          <span className="absolute left-2 top-2 rounded bg-primary px-2 py-1 text-[10px] font-bold">Portada</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(index)}
+                          className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    
+                    {photos.length < STORAGE_LIMITS.MAX_FILES_PER_LISTING && (
+                      <label className="grid min-h-48 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-zinc-300 bg-secondary text-sm font-bold transition-colors hover:bg-zinc-100">
+                        <div className="text-center flex flex-col items-center">
+                          <ImagePlus className="mb-2 text-yellow-700" />
+                          <span>Subir foto</span>
+                        </div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept={STORAGE_LIMITS.ALLOWED_MIME_TYPES.join(',')}
+                          multiple
+                          onChange={handlePhotoSelect}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
               )}
@@ -546,7 +665,7 @@ export default function NewPropertyPage() {
           {/* Live preview sidebar */}
           <aside className="space-y-4">
             <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-              <img src="/habitat-room.png" alt="Vista previa del alojamiento" className="h-56 w-full object-cover" />
+              <img src={photos[0]?.preview || '/habitat-room.png'} alt="Vista previa del alojamiento" className="h-56 w-full object-cover" />
               <div className="p-5">
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
                   Vista previa en tiempo real
@@ -566,11 +685,6 @@ export default function NewPropertyPage() {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 Las publicaciones con fotos claras, precio visible y distancia al campus reciben más solicitudes.
               </p>
-            </div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-              <MessageCircle size={16} className="mb-2" />
-              <p className="font-bold">Fotos</p>
-              <p className="mt-1">La subida de imágenes estará disponible próximamente. Puedes publicar ahora y añadirlas después.</p>
             </div>
           </aside>
         </div>
