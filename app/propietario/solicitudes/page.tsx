@@ -88,11 +88,17 @@ const stats = [
 
 export default function RequestsPage() {
   const [requests, setRequests] = useState(initialRequests)
+  const [activeTab, setActiveTab] = useState('Pendiente')
   const [toast, setToast] = useState('')
 
   const pendingCount = useMemo(
     () => requests.filter(request => request.status === 'Pendiente').length,
     [requests],
+  )
+  
+  const visibleRequests = useMemo(
+    () => requests.filter(request => request.status === activeTab),
+    [requests, activeTab]
   )
 
   function update(id: number, status: string) {
@@ -146,16 +152,22 @@ export default function RequestsPage() {
           <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex max-w-full gap-1.5 overflow-x-auto pb-2 sm:gap-2 sm:pb-0">
-                {['Pendientes (4)', 'Confirmadas (6)', 'Completadas (18)', 'Canceladas (3)'].map((item, index) => (
+                {[
+                  { label: 'Pendientes (4)', status: 'Pendiente' },
+                  { label: 'Confirmadas (6)', status: 'Confirmada' },
+                  { label: 'Completadas (18)', status: 'Completada' },
+                  { label: 'Canceladas (3)', status: 'Cancelada' },
+                ].map((tab) => (
                   <button
-                    key={item}
+                    key={tab.status}
                     type="button"
+                    onClick={() => setActiveTab(tab.status)}
                     className={cn(
                       'min-h-9 sm:min-h-10 shrink-0 whitespace-nowrap rounded-xl px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold transition',
-                      index === 0 ? 'bg-primary text-foreground shadow-sm' : 'bg-secondary text-muted-foreground hover:text-foreground',
+                      activeTab === tab.status ? 'bg-primary text-foreground shadow-sm' : 'bg-secondary text-muted-foreground hover:text-foreground',
                     )}
                   >
-                    {item}
+                    {tab.label}
                   </button>
                 ))}
               </div>
@@ -191,7 +203,7 @@ export default function RequestsPage() {
 
           <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12">
             <section className="space-y-5 lg:col-span-8">
-              {requests.map((request, index) => {
+              {visibleRequests.map((request, index) => {
                 const isPending = request.status === 'Pendiente'
                 const urgent = index === 0 && isPending
                 return (
