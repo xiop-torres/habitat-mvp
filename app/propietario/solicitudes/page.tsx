@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   BadgeCheck,
@@ -11,99 +11,81 @@ import {
   ChevronRight,
   Clock3,
   MessageSquare,
-  MoreVertical,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   UserRound,
   Video,
   X,
   Zap,
+  Loader2,
+  AlertTriangle,
+  TriangleAlert,
 } from 'lucide-react'
 import { AppHeader, Footer, Toast } from '@/components/Shared'
-import { mockRequests, mockRooms } from '@/lib/mocks'
+import { getOwnerVisits, updateVisitStatus, type VisitRequest, type VisitStatus, type VisitMode } from '@/lib/supabase/visits'
 import { cn } from '@/lib/utils'
-
-const initialRequests = [
-  {
-    ...mockRequests[0],
-    name: 'Diego Rodríguez',
-    initials: 'DR',
-    university: 'UCSM verificado',
-    profile: 'Medicina Humana · 5to ciclo',
-    tag: 'Urgente',
-    mode: 'Presencial',
-    message:
-      'Hola Carlos, puedo visitar hoy antes de clases. Me interesa confirmar la señal de internet y si el escritorio queda junto a la ventana.',
-  },
-  {
-    ...mockRequests[1],
-    name: 'Valeria Cornejo',
-    initials: 'VC',
-    university: 'UCSM verificada',
-    profile: 'Arquitectura · 6to ciclo',
-    tag: 'Pregunta por reglas',
-    mode: 'Presencial',
-    message:
-      'Buenas tardes, estudio arquitectura en la Católica de Santa María. ¿Se permiten maquetas y trabajos grandes en el cuarto?',
-  },
-  {
-    id: 3,
-    name: 'Lucía Vega',
-    initials: 'LV',
-    room: mockRooms[1],
-    date: 'Mañana, domingo 20 de octubre',
-    shift: 'Tarde · 4:00 PM',
-    status: 'Pendiente',
-    university: 'UNSA verificada',
-    profile: 'Ingeniería Industrial · 7mo ciclo',
-    tag: 'Asiste con apoderada',
-    mode: 'Presencial',
-    message:
-      'Buenas tardes Carlos, revisé las fotos y quisiera visitar el mini departamento con mi mamá antes de tomar una decisión.',
-  },
-  {
-    id: 4,
-    name: 'Mateo Quispe',
-    initials: 'MQ',
-    room: mockRooms[2],
-    date: 'Lunes 21 de octubre',
-    shift: 'Mañana · 10:00 AM',
-    status: 'Pendiente',
-    university: 'Ingresante UCSM',
-    profile: 'Derecho · llega desde Cusco',
-    tag: 'Postulante foráneo',
-    mode: 'Videollamada',
-    message:
-      'Aún estoy en Cusco organizando mi viaje. ¿Sería posible una videollamada para ver la habitación y resolver dudas del contrato?',
-  },
-]
-
-const stats = [
-  ['Por confirmar', '4', '1 expira en menos de 2 horas', CalendarClock, 'bg-primary/25 text-foreground'],
-  ['Confirmadas', '6', 'Próxima hoy 4:30 PM', CheckCircle2, 'bg-emerald-100 text-emerald-700'],
-  ['Realizadas', '18', '12 terminaron en contrato', BadgeCheck, 'bg-secondary text-foreground'],
-  ['Tiempo respuesta', '24 min', 'Excelente para Habitat', Zap, 'bg-primary/25 text-foreground'],
-] as const
+import { getListingImageUrl } from '@/lib/supabase/storage'
+import { useRouter } from 'next/navigation'
 
 export default function RequestsPage() {
-  const [requests, setRequests] = useState(initialRequests)
-  const [activeTab, setActiveTab] = useState('Pendiente')
-  const [toast, setToast] = useState('')
-
-  const pendingCount = useMemo(
-    () => requests.filter(request => request.status === 'Pendiente').length,
-    [requests],
-  )
+  const router = useRouter()
+  const [requests, setRequests] = useState<VisitRequest[]>([])
+  const [activeTab, setActiveTab] = useState<'pending' | 'accepted' | 'rescheduled' | 'history' | 'all'>('pending')
   
-  const visibleRequests = useMemo(
-    () => requests.filter(request => request.status === activeTab),
-    [requests, activeTab]
-  )
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
+  
+  const [rescheduleData, setRescheduleData] = useState<{ id: string, date: string, shift: string } | null>(null)
 
-  function update(id: number, status: string) {
-    setRequests(current => current.map(request => request.id === id ? { ...request, status } : request))
-    setToast(status === 'Confirmada' ? 'Solicitud aceptada' : 'Solicitud rechazada')
+  useEffect(() => {
+    loadVisits()
+  }, [])
+
+  async function loadVisits() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getOwnerVisits()
+      setRequests(data)
+    } catch (err: any) {
+      setError(err.message || 'Error al cargar las solicitudes.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const pendingCount = useMemo(() => requests.filter(r => r.status === 'pending').length, [requests])
+  const acceptedCount = useMemo(() => requests.filter(r => r.status === 'accepted').length, [requests])
+  const rescheduledCount = useMemo(() => requests.filter(r => r.status === 'rescheduled').length, [requests])
+  const historyCount = useMemo(() => requests.filter(r => ['rejected', 'cancelled', 'completed'].includes(r.status)).length, [requests])
+
+  const stats = [
+    ['Por confirmar', pendingCount.toString(), 'Pendientes de respuesta', CalendarClock, 'bg-primary/25 text-foreground'],
+    ['Confirmadas', acceptedCount.toString(), 'Visitas aprobadas', CheckCircle2, 'bg-emerald-100 text-emerald-700'],
+    ['Reprogramadas', rescheduledCount.toString(), 'Esperando confirmación', CalendarClock, 'bg-orange-100 text-orange-700'],
+    ['Historial', historyCount.toString(), 'Cerradas', BadgeCheck, 'bg-secondary text-foreground'],
+  ] as const
+
+  const visibleRequests = useMemo(() => {
+    if (activeTab === 'all') return requests
+    if (activeTab === 'history') return requests.filter(r => ['rejected', 'cancelled', 'completed'].includes(r.status))
+    return requests.filter(r => r.status === activeTab)
+  }, [requests, activeTab])
+
+  async function handleStatusUpdate(id: string, newStatus: VisitStatus, rescheduleArgs?: { requestedDate: string, requestedTime: string }) {
+    try {
+      const { success, error: updateError } = await updateVisitStatus(id, newStatus, rescheduleArgs)
+      if (success) {
+        setToast(`Solicitud actualizada a: ${newStatus}`)
+        await loadVisits()
+      } else {
+        setToast(`Error: ${updateError}`)
+      }
+    } catch (err: any) {
+      setToast('Ocurrió un error inesperado.')
+    }
+    setRescheduleData(null)
   }
 
   return (
@@ -114,8 +96,7 @@ export default function RequestsPage() {
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <nav className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <Link href="/propietario" className="flex items-center gap-1 hover:text-foreground">
-                <UserRound size={14} />
-                Panel
+                <UserRound size={14} /> Panel
               </Link>
               <ChevronRight size={14} />
               <span className="text-foreground">Solicitudes de visita</span>
@@ -124,25 +105,20 @@ export default function RequestsPage() {
             <div className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Gestión de solicitudes de visita</h1>
+                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Gestión de solicitudes</h1>
                   <span className="rounded-full bg-primary/25 px-3 py-1 text-xs font-bold ring-1 ring-primary/40">
                     {pendingCount} pendientes
                   </span>
                 </div>
                 <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-muted-foreground sm:text-base">
-                  Confirma, reprograma o responde a estudiantes verificados que quieren conocer tus alojamientos.
+                  Revisa y gestiona las solicitudes de visita de los estudiantes.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <Link href="/propietario/calendario" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-bold text-background shadow-sm transition hover:opacity-90">
-                  <CalendarDays size={17} />
-                  Ver calendario
+                  <CalendarDays size={17} /> Ver calendario
                 </Link>
-                <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold text-foreground shadow-sm transition hover:bg-secondary">
-                  <SlidersHorizontal size={17} />
-                  Disponibilidad
-                </button>
               </div>
             </div>
           </div>
@@ -153,15 +129,16 @@ export default function RequestsPage() {
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex max-w-full gap-1.5 overflow-x-auto pb-2 sm:gap-2 sm:pb-0">
                 {[
-                  { label: 'Pendientes (4)', status: 'Pendiente' },
-                  { label: 'Confirmadas (6)', status: 'Confirmada' },
-                  { label: 'Completadas (18)', status: 'Completada' },
-                  { label: 'Canceladas (3)', status: 'Cancelada' },
+                  { label: `Pendientes (${pendingCount})`, status: 'pending' },
+                  { label: `Confirmadas (${acceptedCount})`, status: 'accepted' },
+                  { label: `Reprogramadas (${rescheduledCount})`, status: 'rescheduled' },
+                  { label: `Historial (${historyCount})`, status: 'history' },
+                  { label: 'Todas', status: 'all' },
                 ].map((tab) => (
                   <button
                     key={tab.status}
                     type="button"
-                    onClick={() => setActiveTab(tab.status)}
+                    onClick={() => setActiveTab(tab.status as any)}
                     className={cn(
                       'min-h-9 sm:min-h-10 shrink-0 whitespace-nowrap rounded-xl px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold transition',
                       activeTab === tab.status ? 'bg-primary text-foreground shadow-sm' : 'bg-secondary text-muted-foreground hover:text-foreground',
@@ -170,18 +147,6 @@ export default function RequestsPage() {
                     {tab.label}
                   </button>
                 ))}
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <label className="relative block sm:w-72">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <input className="field bg-secondary pl-9 text-sm" placeholder="Buscar estudiante o alojamiento" />
-                </label>
-                <select className="field bg-secondary text-sm font-bold sm:w-56">
-                  <option>Más urgentes primero</option>
-                  <option>Fecha solicitada</option>
-                  <option>Alojamiento</option>
-                  <option>Universidad</option>
-                </select>
               </div>
             </div>
           </section>
@@ -201,157 +166,195 @@ export default function RequestsPage() {
             ))}
           </section>
 
-          <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12">
-            <section className="space-y-5 lg:col-span-8">
-              {visibleRequests.map((request, index) => {
-                const isPending = request.status === 'Pendiente'
-                const urgent = index === 0 && isPending
-                return (
-                  <article key={request.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:shadow-md">
-                    {urgent && (
-                      <div className="flex items-center justify-between bg-foreground px-5 py-3 text-background">
-                        <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
-                          <Zap size={17} className="text-primary" />
-                          Solicitud urgente · vence en 2 horas
-                        </div>
-                        <span className="rounded-full bg-background/10 px-2.5 py-1 text-xs font-bold">#VIS-8492</span>
-                      </div>
-                    )}
+          <div className="mt-8">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <Loader2 size={40} className="animate-spin mb-4 text-primary" />
+                <p className="text-sm font-bold">Cargando solicitudes...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-20 text-destructive">
+                <TriangleAlert size={40} className="mb-4" />
+                <p className="text-sm font-bold">{error}</p>
+              </div>
+            ) : visibleRequests.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <CalendarDays size={40} className="mb-4 text-border" />
+                <p className="text-sm font-bold">No hay solicitudes en esta categoría.</p>
+              </div>
+            ) : (
+              <section className="space-y-5">
+                {visibleRequests.map((request) => {
+                  const cover = request.listing?.listing_images?.find((i: any) => i.is_cover) || request.listing?.listing_images?.[0]
+                  const imageUrl = cover ? getListingImageUrl(cover.storage_path) : 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&q=80&w=800'
+                  
+                  const isPending = request.status === 'pending'
+                  const isRescheduled = request.status === 'rescheduled'
+                  const isAccepted = request.status === 'accepted'
 
-                    <div className="p-5">
-                      <div className="flex flex-col gap-5 md:flex-row">
-                        <img src={request.room.image} alt="" className="h-44 w-full rounded-xl object-cover md:w-52" />
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <div className="flex flex-wrap items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h2 className="text-xl font-bold">{request.name}</h2>
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                                  <ShieldCheck size={13} />
-                                  {request.university}
+                  return (
+                    <article key={request.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:shadow-md">
+                      <div className="p-5">
+                        <div className="flex flex-col gap-5 md:flex-row">
+                          <img src={imageUrl} alt="" className="h-44 w-full rounded-xl object-cover md:w-52" />
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <div className="flex flex-wrap items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h2 className="text-xl font-bold">{request.student?.first_name} {request.student?.last_name}</h2>
+                                  {request.student?.university && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                                      <ShieldCheck size={13} />
+                                      {request.student.university}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-1 text-sm font-medium text-muted-foreground">{request.listing?.title || 'Alojamiento no disponible'}</p>
+                              </div>
+                              <div className="text-left md:text-right">
+                                {request.listing?.price_monthly && (
+                                  <p className="text-2xl font-bold">S/ {request.listing.price_monthly} <span className="text-xs font-semibold text-muted-foreground">/ mes</span></p>
+                                )}
+                                <span className={cn(
+                                  'mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider',
+                                  request.status === 'pending' ? 'bg-primary/25 text-foreground' : 
+                                  request.status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 
+                                  request.status === 'rescheduled' ? 'bg-orange-100 text-orange-700' : 
+                                  'bg-red-100 text-red-700',
+                                )}>
+                                  {request.status}
                                 </span>
-                                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-bold text-muted-foreground">{request.tag}</span>
                               </div>
-                              <p className="mt-1 text-sm font-medium text-muted-foreground">{request.profile}</p>
                             </div>
-                            <div className="text-left md:text-right">
-                              <p className="text-2xl font-bold">S/ {request.room.price} <span className="text-xs font-semibold text-muted-foreground">/ mes</span></p>
-                              <span className={cn(
-                                'mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold',
-                                request.status === 'Pendiente' ? 'bg-primary/25 text-foreground' : request.status === 'Confirmada' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700',
-                              )}>
-                                {request.status}
-                              </span>
-                            </div>
-                          </div>
 
-                          <div className="mt-4 grid gap-3 rounded-xl bg-secondary/70 p-4 sm:grid-cols-3">
-                            <div>
-                              <p className="text-xs font-bold text-muted-foreground">Fecha</p>
-                              <p className="mt-1 text-sm font-bold">{request.date}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-muted-foreground">Horario</p>
-                              <p className="mt-1 flex items-center gap-1 text-sm font-bold"><Clock3 size={14} />{request.shift}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-muted-foreground">Modalidad</p>
-                              <p className="mt-1 flex items-center gap-1 text-sm font-bold">{request.mode === 'Videollamada' ? <Video size={14} /> : <CalendarDays size={14} />}{request.mode}</p>
-                            </div>
-                          </div>
-
-                          <p className="mt-4 rounded-xl bg-primary/10 p-4 text-sm font-medium leading-6 text-foreground">“{request.message}”</p>
-
-                          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex flex-wrap gap-3 text-sm font-bold">
-                              <a className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground" href="#"><BadgeCheck size={16} />Ver documentos</a>
-                              <Link className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground" href="/mensajes"><MessageSquare size={16} />Responder</Link>
-                            </div>
-                            {isPending ? (
-                              <div className="flex flex-wrap gap-2">
-                                <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold hover:bg-secondary">
-                                  Reprogramar
-                                </button>
-                                <button type="button" onClick={() => update(request.id, 'Rechazada')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50">
-                                  <X size={15} />
-                                  Rechazar
-                                </button>
-                                <button type="button" onClick={() => update(request.id, 'Confirmada')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold shadow-sm hover:bg-primary-hover">
-                                  <Check size={15} />
-                                  Aceptar visita
-                                </button>
+                            <div className="mt-4 grid gap-3 rounded-xl bg-secondary/70 p-4 sm:grid-cols-3">
+                              <div>
+                                <p className="text-xs font-bold text-muted-foreground">Fecha solicitada</p>
+                                <p className="mt-1 text-sm font-bold">{request.requested_date}</p>
                               </div>
-                            ) : (
-                              <button type="button" className="grid size-11 place-items-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground" aria-label="Más acciones">
-                                <MoreVertical size={18} />
-                              </button>
+                              <div>
+                                <p className="text-xs font-bold text-muted-foreground">Horario</p>
+                                <p className="mt-1 flex items-center gap-1 text-sm font-bold"><Clock3 size={14} />{request.requested_time}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-muted-foreground">Modalidad</p>
+                                <p className="mt-1 flex items-center gap-1 text-sm font-bold capitalize">
+                                  {request.mode === 'virtual' ? <Video size={14} /> : <CalendarDays size={14} />}
+                                  {request.mode}
+                                </p>
+                              </div>
+                            </div>
+
+                            {request.message && (
+                              <p className="mt-4 rounded-xl bg-primary/10 p-4 text-sm font-medium leading-6 text-foreground">
+                                “{request.message}”
+                              </p>
                             )}
+
+                            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex flex-wrap gap-3 text-sm font-bold text-muted-foreground">
+                                Fecha de creación: {new Date(request.created_at).toLocaleDateString()}
+                              </div>
+                              
+                              <div className="flex flex-wrap gap-2">
+                                {(isPending || isRescheduled) && (
+                                  <>
+                                    <button type="button" onClick={() => handleStatusUpdate(request.id, 'rejected')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50">
+                                      <X size={15} />
+                                      Rechazar
+                                    </button>
+                                    <button type="button" onClick={() => handleStatusUpdate(request.id, 'accepted')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold shadow-sm hover:bg-primary-hover">
+                                      <Check size={15} />
+                                      Aceptar visita
+                                    </button>
+                                  </>
+                                )}
+
+                                {isPending && (
+                                  <button type="button" onClick={() => setRescheduleData({ id: request.id, date: request.requested_date, shift: request.requested_time })} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold hover:bg-secondary">
+                                    Reprogramar
+                                  </button>
+                                )}
+
+                                {isAccepted && (
+                                  <>
+                                    <button type="button" onClick={() => handleStatusUpdate(request.id, 'cancelled')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50">
+                                      Cancelar visita
+                                    </button>
+                                    <button type="button" onClick={() => handleStatusUpdate(request.id, 'completed')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-600">
+                                      Marcar como completada
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </article>
-                )
-              })}
-            </section>
-
-            <aside className="space-y-5 lg:col-span-4">
-              <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                <div className="flex items-center gap-3 border-b border-border pb-4">
-                  <span className="grid size-11 place-items-center rounded-xl bg-primary"><CalendarClock size={22} /></span>
-                  <div>
-                    <h2 className="text-lg font-bold">Agenda de hoy</h2>
-                    <p className="text-xs font-medium text-muted-foreground">Sábado 19 de octubre</p>
-                  </div>
-                </div>
-                <div className="mt-5 space-y-4 border-l-2 border-border pl-4">
-                  {[
-                    ['11:30 AM', 'Diego Rodríguez', 'Habitación Yanahuara', 'Pendiente'],
-                    ['04:30 PM', 'Valeria Cornejo', 'Mini depto Cayma', 'Confirmada'],
-                    ['06:00 PM', 'Andrea Mogrovejo', 'Yanahuara UCSM', 'Confirmada'],
-                  ].map(([time, name, room, status]) => (
-                    <div key={`${time}-${name}`} className="relative">
-                      <span className={cn('absolute -left-[23px] top-1.5 size-3 rounded-full ring-4 ring-card', status === 'Pendiente' ? 'bg-primary' : 'bg-emerald-500')} />
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-bold">{time}</p>
-                        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-bold', status === 'Pendiente' ? 'bg-primary/25 text-foreground' : 'bg-emerald-100 text-emerald-700')}>{status}</span>
-                      </div>
-                      <p className="mt-1 text-sm font-bold">{name}</p>
-                      <p className="text-xs font-medium text-muted-foreground">{room}</p>
-                    </div>
-                  ))}
-                </div>
-                <Link href="/propietario/calendario" className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-secondary px-4 py-3 text-sm font-bold transition hover:bg-border">
-                  Ver calendario completo
-                </Link>
+                    </article>
+                  )
+                })}
               </section>
-
-              <section className="rounded-2xl border border-primary/40 bg-primary/15 p-5 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary"><ShieldCheck size={22} /></span>
-                  <div>
-                    <h2 className="font-bold">Protocolo para anfitriones</h2>
-                    <p className="mt-1 text-sm font-medium leading-6 text-foreground/75">
-                      Verifica documentos, confirma la hora por chat y muestra WiFi, agua caliente y reglas de la casa durante la visita.
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                <h2 className="font-bold">Soporte Habitat</h2>
-                <p className="mt-2 text-sm font-medium leading-6 text-muted-foreground">¿Tienes dudas con una solicitud o necesitas reprogramar una cita de urgencia?</p>
-                <Link href="/mensajes" className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-3 text-sm font-bold text-background transition hover:opacity-90">
-                  <MessageSquare size={17} />
-                  Escribir a soporte
-                </Link>
-              </section>
-            </aside>
+            )}
           </div>
         </div>
       </main>
       <Footer />
       {toast && <Toast onClose={() => setToast('')}>{toast}</Toast>}
+
+      {/* Reschedule Modal */}
+      {rescheduleData && (
+        <div role="dialog" className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-bold">Reprogramar visita</h3>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">Selecciona una nueva fecha y turno.</p>
+            
+            <label className="grid gap-2 text-sm font-semibold mb-4">
+              Nueva fecha
+              <input 
+                type="date" 
+                className="field" 
+                min={new Date().toISOString().split('T')[0]}
+                value={rescheduleData.date}
+                onChange={e => setRescheduleData({ ...rescheduleData, date: e.target.value })}
+              />
+            </label>
+
+            <div className="mb-6">
+              <p className="mb-2 text-sm font-semibold">Nuevo turno</p>
+              <div className="grid gap-2">
+                {['Mañana – 9:00 - 12:00', 'Tarde – 14:00 - 18:00', 'Noche – 18:00 - 20:00'].map(item => (
+                  <button 
+                    type="button" 
+                    key={item} 
+                    onClick={() => setRescheduleData({ ...rescheduleData, shift: item })} 
+                    className={cn(
+                      'rounded-xl border px-3 py-3 text-left text-xs font-semibold transition-colors', 
+                      rescheduleData.shift === item ? 'border-primary bg-primary/20' : 'border-border hover:bg-secondary/50'
+                    )}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setRescheduleData(null)} className="px-4 py-2 font-bold text-sm">
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                disabled={!rescheduleData.date}
+                onClick={() => handleStatusUpdate(rescheduleData.id, 'rescheduled', { requestedDate: rescheduleData.date, requestedTime: rescheduleData.shift })} 
+                className="rounded-xl bg-primary px-4 py-2 font-bold text-sm"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

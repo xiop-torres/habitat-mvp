@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   CalendarDays,
@@ -13,57 +14,28 @@ import {
   MessageSquare,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
-  Star,
   UserRound,
+  Video,
   X,
+  Loader2,
+  TriangleAlert,
 } from 'lucide-react'
 import { AppHeader, Footer, Toast } from '@/components/Shared'
-import { mockRooms } from '@/lib/mocks'
+import { getStudentVisits, updateVisitStatus, type VisitRequest, type VisitStatus } from '@/lib/supabase/visits'
+import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
+import { getListingImageUrl } from '@/lib/supabase/storage'
 import { cn } from '@/lib/utils'
 
-type VisitStatus = 'proximas' | 'pasadas' | 'canceladas'
+type TabType = 'proximas' | 'historial' | 'todas'
 
-const initialVisits = [
-  {
-    id: 1,
-    code: 'VIS-8492',
-    status: 'proximas' as VisitStatus,
-    modality: 'presencial',
-    room: mockRooms[0],
-    title: 'Habitación privada amoblada cerca de la UCSM',
-    address: 'Calle Cortaderas 214, Yanahuara',
-    district: 'Yanahuara',
-    date: 'Hoy, sábado 19 de octubre',
-    time: '11:30 AM - 12:00 PM',
-    ribbon: 'Próxima visita hoy · En 2 horas y 15 minutos',
-    host: 'Don Carlos M.',
-    hostRating: '4.9 (14 reseñas de estudiantes)',
-    details: 'Baño propio · Servicios incluidos',
-  },
-  {
-    id: 2,
-    code: 'VIS-7821',
-    status: 'pasadas' as VisitStatus,
-    modality: 'presencial',
-    room: mockRooms[3],
-    title: 'Casa compartida para universitarios',
-    address: 'Urb. La Melgariana, José Luis Bustamante',
-    district: 'J. L. Bustamante',
-    date: 'Sábado 12 de octubre',
-    time: '04:00 PM - 04:30 PM',
-    ribbon: 'Visita realizada',
-    host: 'Luis G.',
-    hostRating: '4.7 (9 reseñas de estudiantes)',
-    details: 'Cocina compartida · Patio',
-  },
-]
-
-const tabs: { id: VisitStatus; label: string }[] = [
-  { id: 'proximas', label: 'Próximas' },
-  { id: 'pasadas', label: 'Pasadas' },
-  { id: 'canceladas', label: 'Canceladas' },
-]
+const statusLabels: Record<VisitStatus, string> = {
+  pending: 'Pendiente',
+  accepted: 'Confirmada',
+  rescheduled: 'Reprogramada',
+  rejected: 'Rechazada',
+  cancelled: 'Cancelada',
+  completed: 'Completada',
+}
 
 const checklist = [
   ['Carné universitario', 'Llévalo contigo para validar tu matrícula estudiantil.', true],
@@ -74,26 +46,83 @@ const checklist = [
 ] as const
 
 export default function VisitsPage() {
-  const [active, setActive] = useState<VisitStatus>('proximas')
-  const [visits, setVisits] = useState(initialVisits)
-  const [pendingCancel, setPendingCancel] = useState<number | null>(null)
+  const router = useRouter()
+  const { profile, loading: authLoading } = useCurrentUserProfile()
+  
+  const [visits, setVisits] = useState<VisitRequest[]>([])
+  const [active, setActive] = useState<TabType>('proximas')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [toast, setToast] = useState('')
 
-  const counts = useMemo(() => ({
-    proximas: visits.filter(visit => visit.status === 'proximas').length,
-    pasadas: visits.filter(visit => visit.status === 'pasadas').length,
-    canceladas: visits.filter(visit => visit.status === 'canceladas').length,
-  }), [visits])
+  const [pendingCancel, setPendingCancel] = useState<string | null>(null)
 
-  const visible = visits.filter(visit => visit.status === active)
-  const cancelVisit = visits.find(visit => visit.id === pendingCancel)
+  useEffect(() => {
+    if (authLoading) return
+    if (profile?.role === 'owner') {
+      router.replace('/propietario')
+      return
+    }
+    if (profile?.role === 'student' || profile?.role === 'admin') {
+      loadVisits()
+    } else if (profile === null) {
+      router.replace('/login')
+    }
+  }, [profile, authLoading])
 
-  function confirmCancel() {
+  async function loadVisits() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getStudentVisits()
+      setVisits(data)
+    } catch (err: any) {
+      setError(err.message || 'Error al cargar tus visitas')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const counts = useMemo(() => {
+    return {
+      proximas: visits.filter(v => ['pending', 'accepted', 'rescheduled'].includes(v.status)).length,
+      historial: visits.filter(v => ['rejected', 'cancelled', 'completed'].includes(v.status)).length,
+      todas: visits.length
+    }
+  }, [visits])
+
+  const visible = useMemo(() => {
+    if (active === 'proximas') return visits.filter(v => ['pending', 'accepted', 'rescheduled'].includes(v.status))
+    if (active === 'historial') return visits.filter(v => ['rejected', 'cancelled', 'completed'].includes(v.status))
+    return visits
+  }, [visits, active])
+
+  async function confirmCancel() {
     if (!pendingCancel) return
-    setVisits(current => current.map(visit => visit.id === pendingCancel ? { ...visit, status: 'canceladas' as VisitStatus, ribbon: 'Visita cancelada' } : visit))
-    setPendingCancel(null)
-    setActive('canceladas')
-    setToast('Visita cancelada. El anfitrión fue notificado.')
+    try {
+      const { success, error: cancelError } = await updateVisitStatus(pendingCancel, 'cancelled')
+      if (success) {
+        setToast('Visita cancelada. El anfitrión fue notificado.')
+        await loadVisits()
+      } else {
+        setToast(`Error: ${cancelError}`)
+      }
+    } catch {
+      setToast('Ocurrió un error inesperado al cancelar.')
+    } finally {
+      setPendingCancel(null)
+    }
+  }
+
+  if (authLoading || (profile?.role === 'owner')) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <AppHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="animate-spin text-primary size-12" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -104,8 +133,7 @@ export default function VisitsPage() {
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <nav className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <Link href="/buscar" className="flex items-center gap-1 hover:text-foreground">
-                <UserRound size={14} />
-                Inicio
+                <UserRound size={14} /> Inicio
               </Link>
               <ChevronRight size={14} />
               <Link href="/perfil" className="hover:text-foreground">Mi cuenta</Link>
@@ -117,25 +145,27 @@ export default function VisitsPage() {
               <div>
                 <div className="flex flex-wrap items-center gap-3">
                   <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Mis Visitas Agendadas</h1>
-                  <span className="rounded-full border border-border bg-secondary px-3 py-1 text-xs font-bold text-foreground">Semestre 2024-II</span>
                 </div>
                 <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-muted-foreground sm:text-base">
-                  Gestiona y da seguimiento a tus visitas presenciales y virtuales a alojamientos verificados cerca de tu universidad.
+                  Gestiona y da seguimiento a tus solicitudes de visita a alojamientos.
                 </p>
               </div>
               <Link href="/buscar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold shadow-sm transition hover:bg-primary-hover">
-                <Search size={17} />
-                Explorar más alojamientos
+                <Search size={17} /> Explorar más alojamientos
               </Link>
             </div>
 
             <div className="mt-8 flex flex-col gap-4 border-t border-border pt-4 md:flex-row md:items-center md:justify-between">
               <div className="flex gap-2 overflow-x-auto">
-                {tabs.map(tab => (
+                {[
+                  { id: 'proximas', label: 'Próximas' },
+                  { id: 'historial', label: 'Historial' },
+                  { id: 'todas', label: 'Todas' }
+                ].map(tab => (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActive(tab.id)}
+                    onClick={() => setActive(tab.id as TabType)}
                     className={cn(
                       'inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold transition',
                       active === tab.id ? 'bg-primary text-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
@@ -143,20 +173,11 @@ export default function VisitsPage() {
                   >
                     {tab.label}
                     <span className={cn('rounded-full px-2 py-0.5 text-xs font-bold', active === tab.id ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground')}>
-                      {counts[tab.id]}
+                      {counts[tab.id as TabType]}
                     </span>
                   </button>
                 ))}
               </div>
-              <label className="flex min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm font-bold text-muted-foreground">
-                <SlidersHorizontal size={16} />
-                Modalidad:
-                <select className="border-0 bg-transparent py-0 pl-1 pr-8 text-sm font-bold text-foreground focus:ring-0">
-                  <option>Todas</option>
-                  <option>Presencial</option>
-                  <option>Virtual</option>
-                </select>
-              </label>
             </div>
           </div>
         </section>
@@ -164,112 +185,145 @@ export default function VisitsPage() {
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
             <section className="space-y-5 lg:col-span-8">
-              {visible.length ? visible.map(visit => (
-                <article key={visit.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:shadow-md">
-                  <div className={cn('flex items-center justify-between px-5 py-3 text-sm font-bold uppercase tracking-wide', visit.status === 'canceladas' ? 'bg-muted-foreground text-background' : 'bg-foreground text-background')}>
-                    <span className="flex items-center gap-2">
-                      {visit.status === 'canceladas' ? <X size={17} /> : <AlertCircle size={17} className="text-primary" />}
-                      {visit.ribbon}
-                    </span>
-                    <span className="rounded-full bg-background/10 px-2.5 py-1 text-xs font-bold">Reserva #{visit.code}</span>
-                  </div>
-                  <div className="p-5 sm:p-6">
-                    <div className="flex flex-col gap-6 md:flex-row">
-                      <div className="relative h-44 w-full shrink-0 overflow-hidden rounded-xl bg-secondary md:w-48">
-                        <img src={visit.room.image} alt="" className="h-full w-full object-cover" />
-                        <span className="absolute left-2 top-2 rounded-lg bg-card/95 px-2 py-1 text-xs font-bold shadow-sm">{visit.district}</span>
-                        <span className="absolute bottom-2 left-2 rounded-lg bg-foreground/90 px-2.5 py-1 text-sm font-bold text-background">S/ {visit.room.price} <span className="text-xs font-medium text-background/70">/ mes</span></span>
+              {loading ? (
+                <div className="rounded-2xl border border-border bg-card p-10 flex flex-col items-center justify-center shadow-sm">
+                  <Loader2 size={40} className="animate-spin mb-4 text-primary" />
+                  <p className="text-sm font-bold">Cargando tus visitas...</p>
+                </div>
+              ) : error ? (
+                <div className="rounded-2xl border border-border bg-card p-10 flex flex-col items-center justify-center shadow-sm text-destructive">
+                  <TriangleAlert size={40} className="mb-4" />
+                  <p className="text-sm font-bold">{error}</p>
+                </div>
+              ) : visible.length > 0 ? (
+                visible.map(visit => {
+                  const cover = visit.listing?.listing_images?.find((i: any) => i.is_cover) || visit.listing?.listing_images?.[0]
+                  const imageUrl = cover ? getListingImageUrl(cover.storage_path) : 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&q=80&w=800'
+                  
+                  const isPublished = visit.listing?.status === 'published'
+                  const titleNode = isPublished ? (
+                    <Link href={`/alojamiento/${visit.listing.id}`} className="hover:underline">
+                      {visit.listing?.title}
+                    </Link>
+                  ) : (
+                    <span>{visit.listing?.title || 'Alojamiento no disponible'}</span>
+                  )
+
+                  const canCancel = visit.status === 'pending' || visit.status === 'accepted'
+
+                  return (
+                    <article key={visit.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:shadow-md">
+                      <div className={cn('flex items-center justify-between px-5 py-3 text-sm font-bold uppercase tracking-wide', visit.status === 'cancelled' ? 'bg-muted-foreground text-background' : 'bg-foreground text-background')}>
+                        <span className="flex items-center gap-2">
+                          {visit.status === 'cancelled' ? <X size={17} /> : <AlertCircle size={17} className="text-primary" />}
+                          Estado: {statusLabels[visit.status]}
+                        </span>
                       </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold', visit.status === 'canceladas' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700')}>
-                            {visit.status === 'canceladas' ? <X size={13} /> : <CheckCircle2 size={13} />}
-                            {visit.status === 'canceladas' ? 'Cancelada' : 'Confirmada'}
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-bold text-muted-foreground">
-                            <Footprints size={13} />
-                            {visit.modality === 'presencial' ? 'Presencial' : 'Virtual'}
-                          </span>
-                        </div>
-
-                        <h2 className="mt-3 text-xl font-bold">{visit.title}</h2>
-                        <p className="mt-1 text-sm font-medium text-muted-foreground">{visit.address} · A 8 min a pie de UCSM</p>
-
-                        <div className="mt-4 grid gap-3 rounded-xl border border-border bg-secondary/60 p-4 sm:grid-cols-2">
-                          <div className="flex gap-3">
-                            <Clock3 className="mt-0.5 size-5 text-foreground" />
-                            <div>
-                              <p className="text-xs font-bold text-muted-foreground">Fecha y horario</p>
-                              <p className="mt-1 text-sm font-bold">{visit.date} · {visit.time}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <ShieldCheck className="mt-0.5 size-5 text-emerald-700" />
-                            <div>
-                              <p className="text-xs font-bold text-muted-foreground">Tipo</p>
-                              <p className="mt-1 text-sm font-bold">{visit.details}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="grid size-10 place-items-center rounded-full border border-border bg-secondary text-sm font-bold">CM</span>
-                            <div>
-                              <p className="flex items-center gap-1 text-sm font-bold">{visit.host}<CheckCircle2 size={14} className="text-emerald-600" /></p>
-                              <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground"><Star size={13} className="fill-primary text-primary" />{visit.hostRating}</p>
-                            </div>
-                          </div>
-                          <Link href="/mensajes" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">
-                            <MessageSquare size={16} />
-                            WhatsApp anfitrión
-                          </Link>
-                        </div>
-
-                        {visit.status === 'pasadas' ? (
-                          <div className="mt-5 rounded-xl border border-border bg-secondary/70 p-4">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <p className="font-bold">¿Cómo te fue en la visita?</p>
-                                <p className="text-sm font-medium text-muted-foreground">Puntúa al propietario para ayudar a otros estudiantes.</p>
-                              </div>
-                              <div className="flex items-center gap-1 text-primary">
-                                {[1, 2, 3, 4].map(item => <Star key={item} className="size-5 fill-primary" />)}
-                                <Star className="size-5 text-muted-foreground" />
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-                            <div className="flex flex-wrap gap-2">
-                              <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-bold hover:bg-border">
-                                <Footprints size={16} />
-                                Ruta a pie (8 min)
-                              </button>
-                              <Link href="/mensajes" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold hover:bg-primary-hover">
-                                <MessageSquare size={16} />
-                                Chat Seguro Habitat
+                      <div className="p-5 sm:p-6">
+                        <div className="flex flex-col gap-6 md:flex-row">
+                          <div className="relative h-44 w-full shrink-0 overflow-hidden rounded-xl bg-secondary md:w-48">
+                            {isPublished ? (
+                              <Link href={`/alojamiento/${visit.listing.id}`}>
+                                <img src={imageUrl} alt="" className="h-full w-full object-cover transition hover:scale-105" />
                               </Link>
+                            ) : (
+                              <img src={imageUrl} alt="" className="h-full w-full object-cover opacity-80 grayscale" />
+                            )}
+                            
+                            {visit.listing?.district && (
+                              <span className="absolute left-2 top-2 rounded-lg bg-card/95 px-2 py-1 text-xs font-bold shadow-sm">{visit.listing.district}</span>
+                            )}
+                            {visit.listing?.price_monthly && (
+                              <span className="absolute bottom-2 left-2 rounded-lg bg-foreground/90 px-2.5 py-1 text-sm font-bold text-background">
+                                S/ {visit.listing.price_monthly} <span className="text-xs font-medium text-background/70">/ mes</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={cn(
+                                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold', 
+                                visit.status === 'cancelled' ? 'bg-red-100 text-red-700' : 
+                                visit.status === 'rescheduled' ? 'bg-orange-100 text-orange-700' : 
+                                visit.status === 'rejected' ? 'bg-red-100 text-red-700' : 
+                                'bg-emerald-100 text-emerald-700'
+                              )}>
+                                {visit.status === 'cancelled' ? <X size={13} /> : <CheckCircle2 size={13} />}
+                                {statusLabels[visit.status]}
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-bold text-muted-foreground">
+                                {visit.mode === 'virtual' ? <Video size={13} /> : <Footprints size={13} />}
+                                {visit.mode === 'virtual' ? 'Virtual' : 'Presencial'}
+                              </span>
+                              {!isPublished && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
+                                  Pausado
+                                </span>
+                              )}
                             </div>
-                            {visit.status !== 'canceladas' && (
-                              <div className="flex gap-3 text-sm font-bold">
-                                <button type="button" className="text-muted-foreground hover:text-foreground">Reprogramar</button>
-                                <button type="button" onClick={() => setPendingCancel(visit.id)} className="text-red-600 hover:text-red-700">Cancelar visita</button>
+
+                            <h2 className="mt-3 text-xl font-bold">{titleNode}</h2>
+
+                            <div className="mt-4 grid gap-3 rounded-xl border border-border bg-secondary/60 p-4 sm:grid-cols-2">
+                              <div className="flex gap-3">
+                                <Clock3 className="mt-0.5 size-5 text-foreground" />
+                                <div>
+                                  <p className="text-xs font-bold text-muted-foreground">Fecha y horario</p>
+                                  <p className="mt-1 text-sm font-bold">{visit.requested_date} • {visit.requested_time}</p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {visit.message && (
+                              <p className="mt-4 rounded-xl bg-primary/10 p-4 text-sm font-medium leading-6 text-foreground">
+                                “{visit.message}”
+                              </p>
+                            )}
+
+                            {visit.status === 'rescheduled' && (
+                              <p className="mt-4 text-sm font-medium text-orange-700 bg-orange-50 p-3 rounded-xl border border-orange-200">
+                                El propietario ha propuesto una nueva fecha y horario para esta visita.
+                              </p>
+                            )}
+
+                            {['rejected', 'cancelled', 'completed'].includes(visit.status) ? (
+                              <div className="mt-5 rounded-xl border border-border bg-secondary/70 p-4 text-sm text-muted-foreground text-center font-medium">
+                                Esta solicitud ha finalizado.
+                              </div>
+                            ) : (
+                              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                                <div className="flex flex-wrap gap-2">
+                                  <Link href="/mensajes" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold hover:bg-primary-hover">
+                                    <MessageSquare size={16} />
+                                    Chat Seguro Habitat
+                                  </Link>
+                                </div>
+                                {canCancel && (
+                                  <div className="flex gap-3 text-sm font-bold">
+                                    <button 
+                                      type="button" 
+                                      onClick={() => setPendingCancel(visit.id)} 
+                                      className="text-red-600 hover:text-red-700 min-h-11 px-4 py-2 rounded-xl hover:bg-red-50 transition"
+                                    >
+                                      {visit.status === 'pending' ? 'Cancelar solicitud' : 'Cancelar visita'}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </article>
-              )) : (
+                    </article>
+                  )
+                })
+              ) : (
                 <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
                   <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-primary text-foreground"><CalendarDays size={30} /></span>
                   <h2 className="mt-5 text-xl font-bold">No tienes visitas en esta sección</h2>
                   <p className="mx-auto mt-2 max-w-md text-sm font-medium leading-6 text-muted-foreground">Explora habitaciones disponibles cerca de tu universidad y agenda tu próxima visita.</p>
-                  <Link href="/buscar" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold hover:bg-primary-hover"><Search size={17} />Explorar más alojamientos</Link>
+                  <Link href="/buscar" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold hover:bg-primary-hover"><Search size={17} /> Explorar más alojamientos</Link>
                 </div>
               )}
             </section>
@@ -285,7 +339,7 @@ export default function VisitsPage() {
                 </div>
                 <div className="mt-4 space-y-3">
                   {checklist.map(([title, copy, checked], index) => (
-                    <label key={title} className="flex gap-3">
+                    <label key={title} className="flex gap-3 cursor-pointer">
                       <input type="checkbox" defaultChecked={checked} className="mt-1 size-4 rounded border-border" />
                       <span>
                         <span className="block text-sm font-bold">{index + 1}. {title}</span>
@@ -293,10 +347,6 @@ export default function VisitsPage() {
                       </span>
                     </label>
                   ))}
-                </div>
-                <div className="mt-5 border-t border-border pt-4">
-                  <div className="h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full w-2/5 rounded-full bg-primary" /></div>
-                  <p className="mt-2 text-right text-xs font-semibold text-muted-foreground">Progreso de preparación: 2 de 5</p>
                 </div>
               </section>
 
@@ -307,47 +357,33 @@ export default function VisitsPage() {
                 </div>
                 <p className="text-sm font-medium leading-6 text-muted-foreground">¿El alojamiento no coincide con las fotos o el anfitrión no asistió? Te reubicamos y te protegemos al instante.</p>
                 <div className="mt-5 rounded-xl border border-border bg-secondary/60 p-4 text-sm">
-                  <div className="flex justify-between gap-4"><span className="font-bold text-muted-foreground">WhatsApp Estudiantes:</span><span className="font-bold text-emerald-700">+51 954 120 488</span></div>
-                  <div className="mt-2 flex justify-between gap-4"><span className="font-bold text-muted-foreground">Horario de soporte:</span><span className="font-medium">8:00 AM - 8:00 PM</span></div>
+                  <div className="flex justify-between gap-4"><span className="font-bold text-muted-foreground">Soporte:</span><span className="font-bold text-emerald-700">soporte@habitat.com</span></div>
                 </div>
-                <Link href="/mensajes" className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-secondary px-4 py-3 text-sm font-bold hover:bg-border">
-                  <MessageSquare size={16} />
-                  Reportar incidencia de visita
-                </Link>
               </section>
             </aside>
           </div>
         </div>
       </main>
+      <Footer />
+      {toast && <Toast onClose={() => setToast('')}>{toast}</Toast>}
 
-      {pendingCancel !== null && cancelVisit && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-foreground/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
-            <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
-              <div>
-                <p className="flex items-center gap-2 text-sm font-bold text-red-600"><X size={17} />Cancelar visita</p>
-                <h2 className="mt-1 text-xl font-bold">¿Deseas cancelar esta visita?</h2>
-              </div>
-              <button type="button" onClick={() => setPendingCancel(null)} className="grid size-10 place-items-center rounded-full hover:bg-secondary" aria-label="Cerrar"><X size={18} /></button>
-            </div>
-            <div className="py-5">
-              <p className="text-sm font-medium leading-6 text-muted-foreground">Estás a punto de cancelar tu visita programada para:</p>
-              <div className="mt-3 rounded-xl border border-border bg-secondary/70 p-4">
-                <p className="font-bold">{cancelVisit.title}</p>
-                <p className="mt-1 text-sm font-medium text-muted-foreground">{cancelVisit.date} · {cancelVisit.time}</p>
-              </div>
-              <p className="mt-3 text-sm font-medium leading-6 text-muted-foreground">El anfitrión será notificado para liberar el horario.</p>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-border pt-4">
-              <button type="button" onClick={() => setPendingCancel(null)} className="rounded-xl bg-secondary px-4 py-2.5 text-sm font-bold hover:bg-border">Mantener visita</button>
-              <button type="button" onClick={confirmCancel} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700">Sí, cancelar</button>
+      {pendingCancel && (
+        <div role="dialog" className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl text-center">
+            <TriangleAlert size={40} className="mx-auto text-red-500 mb-4" />
+            <h3 className="text-lg font-bold mb-2">¿Estás seguro de cancelar?</h3>
+            <p className="text-sm text-muted-foreground mb-6">El propietario será notificado de tu cancelación.</p>
+            <div className="flex gap-3 justify-center">
+              <button type="button" onClick={() => setPendingCancel(null)} className="px-4 py-2 font-bold text-sm bg-secondary rounded-xl hover:bg-border transition">
+                Volver
+              </button>
+              <button type="button" onClick={confirmCancel} className="px-4 py-2 font-bold text-sm text-white bg-red-600 rounded-xl hover:bg-red-700 transition">
+                Sí, cancelar visita
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      <Footer />
-      {toast && <Toast onClose={() => setToast('')}>{toast}</Toast>}
     </div>
   )
 }

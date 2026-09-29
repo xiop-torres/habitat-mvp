@@ -20,6 +20,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ListingWithImages } from '@/lib/supabase/listings'
 import { getListingImageUrl } from '@/lib/supabase/storage'
 import { FavoriteButton } from '@/components/FavoriteButton'
+import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
 
 
 
@@ -32,6 +33,9 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
 
   const [visitOpen, setVisitOpen] = useState(false)
   const [toast, setToast] = useState('')
+  const { profile } = useCurrentUserProfile()
+  const isOwner = profile?.role === 'owner'
+  const isMyListing = isOwner && profile?.id === listing?.owner_id
 
   useEffect(() => {
     async function fetchListing() {
@@ -149,7 +153,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
             >
               <Share2 size={14} /> Compartir
             </button>
-            <FavoriteButton listingId={listing.id} variant="detail" />
+            {!isOwner && <FavoriteButton listingId={listing.id} variant="detail" />}
           </div>
         </div>
 
@@ -389,20 +393,31 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
                     </select>
                   </label>
                 </div>
-                <button
+                {!isOwner && (
+                  <button
                   type="button"
                   onClick={() => setVisitOpen(true)}
                   className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#FACC15] px-4 py-3 text-sm font-black shadow-sm transition hover:bg-[#EAB308]"
                 >
                   <CalendarDays size={17} /> Solicitar visita presencial o virtual
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setToast('Mensajes disponibles próximamente')}
-                  className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#18181B] px-4 py-3 text-sm font-black text-white"
-                >
-                  <MessageCircle size={17} className="text-[#10B981]" /> Contactar al propietario
-                </button>
+                )}
+                {!isOwner ? (
+                    <button
+                      type="button"
+                      onClick={() => setToast('Mensajes disponibles próximamente')}
+                      className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#18181B] px-4 py-3 text-sm font-black text-white"
+                    >
+                      <MessageCircle size={17} className="text-[#10B981]" /> Contactar al propietario
+                    </button>
+                  ) : isMyListing ? (
+                    <Link
+                      href={`/propietario/editar/${listing.id}`}
+                      className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#18181B] px-4 py-3 text-sm font-black text-white"
+                    >
+                      Editar alojamiento
+                    </Link>
+                  ) : null}
                 <p className="mt-4 flex items-center justify-center gap-1 text-center text-[11px] text-[#A1A1AA]">
                   <ShieldCheck size={14} className="text-[#10B981]" /> Contacto directo sin intermediarios
                 </p>
@@ -476,7 +491,8 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
       <VisitRequestModal
         open={visitOpen}
         onClose={() => setVisitOpen(false)}
-        onSubmitted={() => { setVisitOpen(false); setToast('Solicitud de visita enviada') }}
+        onSubmitted={(msg) => { setVisitOpen(false); setToast(msg) }}
+        listingId={listing.id}
       />
       {toast && <Toast onClose={() => setToast('')}>{toast}</Toast>}
     </div>

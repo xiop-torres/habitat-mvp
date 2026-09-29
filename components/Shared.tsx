@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { Bell, CalendarDays, Check, Heart, Menu, MessageCircle, UserRound, X } from 'lucide-react'
+import { Bell, CalendarDays, Check, Heart, Menu, MessageCircle, UserRound, X, Loader2, TriangleAlert } from 'lucide-react'
 import { BrandLogo } from '@/components/BrandLogo'
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -130,10 +130,101 @@ export function FilterPill({ children, active = false, onClick }: { children: Re
   return <button type="button" onClick={onClick} className={cn('min-h-10 rounded-full border px-4 py-2 text-sm font-semibold transition', active ? 'border-primary bg-primary' : 'border-border bg-card hover:bg-secondary')}>{children}</button>
 }
 
-export function VisitRequestModal({ open, onClose, onSubmitted }: { open: boolean; onClose: () => void; onSubmitted: () => void }) {
-  const [shift, setShift] = useState('Mañana · 9:00 - 12:00')
-  if (!open) return null
-  return <div role="dialog" aria-modal="true" aria-labelledby="visit-title" className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4"><div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-card p-6 shadow-xl"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold text-primary">Solicitar visita</p><h2 id="visit-title" className="mt-1 text-xl font-bold">Conoce tu próximo espacio</h2></div><button type="button" aria-label="Cerrar" onClick={onClose} className="grid size-10 place-items-center rounded-full hover:bg-secondary"><X size={18} /></button></div><div className="mt-6 grid gap-4"><label className="grid gap-2 text-sm font-semibold">Día<input type="date" className="field" /></label><div><p className="mb-2 text-sm font-semibold">Turno</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{['Mañana · 9:00 - 12:00', 'Tarde · 14:00 - 18:00', 'Noche · 18:00 - 20:00'].map(item => <button type="button" key={item} onClick={() => setShift(item)} className={cn('rounded-xl border px-3 py-3 text-left text-xs font-semibold', shift === item ? 'border-primary bg-primary/20' : 'border-border')}>{item}</button>)}</div></div><label className="grid gap-2 text-sm font-semibold">Mensaje <textarea className="field min-h-24" placeholder="Cuéntale algo al propietario (opcional)" /></label><PrimaryButton onClick={onSubmitted} className="w-full">Enviar solicitud</PrimaryButton></div></div></div>
+import { useRouter } from 'next/navigation';
+import { createVisitRequest, type VisitMode } from '@/lib/supabase/visits';
+
+export function VisitRequestModal({ open, onClose, onSubmitted, listingId }: { open: boolean; onClose: () => void; onSubmitted: (msg: string) => void; listingId?: string }) {
+  const router = useRouter();
+  const [shift, setShift] = useState('Mañana – 9:00 - 12:00');
+  const [date, setDate] = useState('');
+  const [mode, setMode] = useState<VisitMode>('presencial');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!open) return null;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  async function handleSubmit() {
+    if (!listingId) return;
+    if (!date) {
+      setError('Por favor selecciona una fecha.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    const { success, error: reqError } = await createVisitRequest({
+      listingId,
+      requestedDate: date,
+      requestedTime: shift,
+      mode,
+      message
+    });
+    setLoading(false);
+    if (success) {
+      onSubmitted('Solicitud de visita enviada correctamente.');
+    } else {
+      if (reqError === 'No autorizado') {
+        router.push('/login');
+        onClose();
+      } else {
+        setError(reqError || 'Ocurrió un error inesperado.');
+      }
+    }
+  }
+
+  return <div role="dialog" aria-modal="true" aria-labelledby="visit-title" className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4">
+    <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-card p-6 shadow-xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-primary">Solicitar visita</p>
+          <h2 id="visit-title" className="mt-1 text-xl font-bold">Conoce tu próximo espacio</h2>
+        </div>
+        <button type="button" aria-label="Cerrar" onClick={onClose} disabled={loading} className="grid size-10 place-items-center rounded-full hover:bg-secondary">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="mt-6 grid gap-4">
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-sm font-semibold text-destructive">
+            <TriangleAlert size={18} /> {error}
+          </div>
+        )}
+        <label className="grid gap-2 text-sm font-semibold">
+          Día
+          <input type="date" className="field" min={todayStr} value={date} onChange={e => setDate(e.target.value)} disabled={loading} />
+        </label>
+        <div>
+          <p className="mb-2 text-sm font-semibold">Turno</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {['Mañana – 9:00 - 12:00', 'Tarde – 14:00 - 18:00', 'Noche – 18:00 - 20:00'].map(item => (
+              <button type="button" key={item} disabled={loading} onClick={() => setShift(item)} className={cn('rounded-xl border px-3 py-3 text-left text-xs font-semibold transition-colors', shift === item ? 'border-primary bg-primary/20' : 'border-border hover:bg-secondary/50')}>
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-sm font-semibold">Modalidad</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(['presencial', 'virtual'] as const).map(m => (
+              <button type="button" key={m} disabled={loading} onClick={() => setMode(m)} className={cn('rounded-xl border px-3 py-3 text-center text-sm font-semibold capitalize transition-colors', mode === m ? 'border-primary bg-primary/20' : 'border-border hover:bg-secondary/50')}>
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Mensaje
+          <textarea className="field min-h-24 resize-none" placeholder="Cuéntale algo al propietario (opcional)" value={message} onChange={e => setMessage(e.target.value)} disabled={loading} />
+        </label>
+        <PrimaryButton onClick={handleSubmit} disabled={loading} className="w-full h-12 mt-2">
+          {loading ? <Loader2 className="mx-auto animate-spin" size={20} /> : 'Enviar solicitud'}
+        </PrimaryButton>
+      </div>
+    </div>
+  </div>
 }
 
 export function Toast({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
