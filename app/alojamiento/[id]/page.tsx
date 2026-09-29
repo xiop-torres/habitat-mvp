@@ -20,6 +20,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ListingWithImages } from '@/lib/supabase/listings'
 import { getListingImageUrl } from '@/lib/supabase/storage'
 import { FavoriteButton } from '@/components/FavoriteButton'
+import { ContactOwnerButton } from '@/components/ContactOwnerButton'
 import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
 
 
@@ -403,13 +404,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
                 </button>
                 )}
                 {!isOwner ? (
-                    <button
-                      type="button"
-                      onClick={() => setToast('Mensajes disponibles próximamente')}
-                      className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#18181B] px-4 py-3 text-sm font-black text-white"
-                    >
-                      <MessageCircle size={17} className="text-[#10B981]" /> Contactar al propietario
-                    </button>
+                    <ContactOwnerButton listingId={listing.id} className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#18181B] px-4 py-3 text-sm font-black text-white" />
                   ) : isMyListing ? (
                     <Link
                       href={`/propietario/editar/${listing.id}`}

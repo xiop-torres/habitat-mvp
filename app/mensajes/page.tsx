@@ -1,71 +1,591 @@
 'use client'
 
+import { useEffect, useState, useMemo, useRef, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useMemo, useState, type FormEvent } from 'react'
 import {
   ArrowLeft,
-  CalendarDays,
-  Check,
-  CheckCheck,
-  ChevronDown,
-  Clock3,
-  ImagePlus,
   Lock,
-  MapPin,
-  MessageCircle,
-  MoreVertical,
   Paperclip,
   Search,
   Send,
   ShieldCheck,
-  Star,
-  UserRound,
-  X,
+  Loader2,
+  TriangleAlert,
+  MessageSquare,
+  Home,
 } from 'lucide-react'
-import { AppHeader, Footer } from '@/components/Shared'
-import { mockConversations } from '@/lib/mocks'
+import { AppHeader } from '@/components/Shared'
+import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
+import {
+  getMyConversations,
+  getConversationMessages,
+  sendMessage,
+  markConversationAsRead,
+  type Conversation,
+  type Message,
+} from '@/lib/supabase/messages'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getListingImageUrl } from '@/lib/supabase/storage'
+import { cn } from '@/lib/utils'
 
-const conversationMeta = {
-  1: { online: true, status: 'Visita solicitada', roomLabel: 'Habitación cerca de la UCSM', unread: 1 },
-  2: { online: false, status: 'Visita confirmada', roomLabel: 'Mini departamento Cayma', unread: 0 },
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function Avatar({ name, url, size = 12 }: { name: string; url?: string | null; size?: number }) {
+  const cls = `size-${size} rounded-full object-cover`
+  if (url)
+    return <img src={url} alt={name} className={cls} />
+  return (
+    <div
+      className={`grid size-${size} place-items-center rounded-full bg-[#EAE7EB] font-black text-[#554336]`}
+      style={{ fontSize: size < 10 ? '0.9rem' : '1.1rem' }}
+    >
+      {name.charAt(0).toUpperCase()}
+    </div>
+  )
+}
+
+// ─── main component (wrapped in Suspense for useSearchParams) ───────────────
+
+function MessagesContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlConversationId = searchParams.get('conversation')
+  const { profile, loading: authLoading } = useCurrentUserProfile()
+
+  // ── state ──────────────────────────────────────────────────────────────────
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [loadingConvs, setLoadingConvs] = useState(true)
+  const [convsError, setConvsError] = useState<string | null>(null)
+
+  const [activeConvId, setActiveConvId] = useState<string | null>(null)
+
+  const [messages, setMessages] = useState<Message[]>([])
+  const [loadingMsgs, setLoadingMsgs] = useState(false)
+  const [msgsError, setMsgsError] = useState<string | null>(null)
+
+  const [newMessage, setNewMessage] = useState('')
+  const [sending, setSending] = useState(false)
+
+  // Track which conversation IDs have unread messages received by the current user.
+  // Key = conversationId, value = true when there's at least one unread incoming msg.
+  const [unreadConvIds, setUnreadConvIds] = useState<Set<string>>(new Set())
+
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Keep a stable ref of activeConvId for use inside realtime callbacks
+  const activeConvIdRef = useRef<string | null>(null)
+  activeConvIdRef.current = activeConvId
+
+  const profileRef = useRef(profile)
+  profileRef.current = profile
+
+  const showChatMobile = activeConvId !== null
+
+  // ── auth redirect ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!authLoading && profile === null) router.replace('/login')
+  }, [profile, authLoading, router])
+
+  // ── load conversations ─────────────────────────────────────────────────────
+  const loadConversations = useCallback(async () => {
+    try {
+      setLoadingConvs(true)
+      setConvsError(null)
+      const data = await getMyConversations()
+      setConversations(data as any[])
+    } catch (err: any) {
+      setConvsError(err.message || 'Error al cargar las conversaciones')
+    } finally {
+      setLoadingConvs(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (authLoading || !profile) return
+    loadConversations()
+  }, [authLoading, profile, loadConversations])
+
+  // ── select active conversation after load ──────────────────────────────────
+  useEffect(() => {
+    if (loadingConvs || conversations.length === 0) return
+
+    const targetId = urlConversationId && conversations.some(c => c.id === urlConversationId)
+      ? urlConversationId
+      : conversations[0].id
+
+    setActiveConvId(targetId)
+    if (!urlConversationId || urlConversationId !== targetId) {
+      router.replace(`/mensajes?conversation=${targetId}`)
+    }
+  // Only re-run when the list itself changes or when the URL param changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlConversationId, loadingConvs, conversations.length])
+
+  // ── load messages when active conv changes ─────────────────────────────────
+  const loadMessages = useCallback(async (convId: string) => {
+    try {
+      setLoadingMsgs(true)
+      setMsgsError(null)
+      const data = await getConversationMessages(convId)
+      setMessages(data)
+      // Mark received messages as read and clear unread indicator
+      await markConversationAsRead(convId)
+      setUnreadConvIds(prev => {
+        const next = new Set(prev)
+        next.delete(convId)
+        return next
+      })
+    } catch (err: any) {
+      setMsgsError(err.message || 'Error al cargar los mensajes')
+    } finally {
+      setLoadingMsgs(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!activeConvId) return
+    loadMessages(activeConvId)
+  }, [activeConvId, loadMessages])
+
+  // ── auto-scroll ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  // ── Realtime subscription ──────────────────────────────────────────────────
+  // We subscribe to ALL messages INSERT on conversations where the user is a participant.
+  // Supabase Realtime + RLS ensures only authorized rows are pushed to us.
+  // We use a single channel and differentiate by conversation_id in the handler.
+  useEffect(() => {
+    if (!profile) return
+
+    const supabase = createSupabaseBrowserClient()
+
+    const channel = supabase
+      .channel(`messages-inbox-${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const incoming = payload.new as Message
+          const currentActiveId = activeConvIdRef.current
+          const currentProfile = profileRef.current
+
+          if (!currentProfile) return
+
+          if (incoming.conversation_id === currentActiveId) {
+            // Chat is open: add message (deduplicating by id) and mark as read
+            setMessages(prev => {
+              if (prev.some(m => m.id === incoming.id)) return prev
+              return [...prev].concat(incoming).sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              )
+            })
+            // If the message came from the other person, mark it read immediately
+            if (incoming.sender_id !== currentProfile.id) {
+              markConversationAsRead(incoming.conversation_id)
+            }
+          } else {
+            // Message arrived for a different conversation
+            if (incoming.sender_id !== currentProfile.id) {
+              setUnreadConvIds(prev => {
+                const next = new Set(prev)
+                next.add(incoming.conversation_id)
+                return next
+              })
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [profile]) // Re-subscribe only when profile changes (login/logout)
+
+  // ── send message ───────────────────────────────────────────────────────────
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!activeConvId || !newMessage.trim() || sending) return
+
+    const text = newMessage.trim()
+    if (text.length > 1000) {
+      alert('El mensaje es demasiado largo (máximo 1000 caracteres)')
+      return
+    }
+
+    try {
+      setSending(true)
+      // sendMessage returns the inserted row; add it optimistically to avoid waiting
+      // for the Realtime echo (which also deduplicates by id).
+      const sent = await sendMessage(activeConvId, text) as Message
+      setNewMessage('')
+      setMessages(prev => {
+        if (prev.some(m => m.id === sent.id)) return prev
+        return [...prev, sent]
+      })
+    } catch (err: any) {
+      alert(err.message || 'Error al enviar el mensaje')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // ── conversation selection ─────────────────────────────────────────────────
+  function handleSelectConversation(id: string) {
+    setActiveConvId(id)
+    router.push(`/mensajes?conversation=${id}`)
+  }
+
+  function handleBackToList() {
+    setActiveConvId(null)
+    router.push('/mensajes')
+  }
+
+  const activeConversation = useMemo(
+    () => conversations.find(c => c.id === activeConvId),
+    [activeConvId, conversations]
+  )
+
+  // ── loading / auth guard ───────────────────────────────────────────────────
+  if (authLoading || profile === null) {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#FBF8FC]">
+        <AppHeader />
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-12 animate-spin text-primary" />
+        </div>
+      </div>
+    )
+  }
+
+  // ── render ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="flex min-h-screen flex-col bg-[#FBF8FC] text-[#1B1B1E]">
+      <AppHeader owner={profile.role === 'owner'} />
+
+      <main className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 64px)' }}>
+        {/* ── SIDEBAR ── */}
+        <aside
+          className={cn(
+            'flex w-full flex-col border-r border-[#E4E1E6] bg-white md:w-[350px] lg:w-[400px]',
+            showChatMobile ? 'hidden md:flex' : 'flex'
+          )}
+        >
+          <div className="border-b border-[#E4E1E6] p-4">
+            <h1 className="text-xl font-black">Mensajes</h1>
+            <div className="mt-4 flex items-center rounded-xl bg-[#F0EDF1] px-3 py-2 text-sm">
+              <Search className="mr-2 shrink-0 text-[#887364]" size={16} />
+              <input
+                type="text"
+                placeholder="Buscar conversación..."
+                className="w-full bg-transparent font-medium outline-none placeholder:text-[#887364]"
+              />
+            </div>
+          </div>
+
+          <div className="custom-scrollbar flex-1 overflow-y-auto">
+            {loadingConvs ? (
+              <div className="flex items-center justify-center p-10">
+                <Loader2 className="size-8 animate-spin text-primary" />
+              </div>
+            ) : convsError ? (
+              <div className="p-6 text-center text-red-600">
+                <TriangleAlert size={32} className="mx-auto mb-2" />
+                <p className="text-sm font-bold">{convsError}</p>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="p-10 text-center text-[#887364]">
+                <MessageSquare size={40} className="mx-auto mb-4 opacity-50" />
+                <p className="text-sm font-bold">No tienes mensajes todavía.</p>
+              </div>
+            ) : (
+              conversations.map((conv) => {
+                const isSelected = conv.id === activeConvId
+                const hasUnread = unreadConvIds.has(conv.id)
+                const otherPerson = profile.role === 'student' ? conv.owner : conv.student
+                const name = `${otherPerson?.first_name || 'Usuario'} ${otherPerson?.last_name || ''}`.trim()
+                const listingTitle = (conv as any).listing?.title || 'Alojamiento no disponible'
+
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => handleSelectConversation(conv.id)}
+                    className={cn(
+                      'flex w-full items-start gap-3 border-b border-[#E4E1E6] p-4 text-left transition',
+                      isSelected ? 'bg-[#F0EDF1] shadow-inner' : 'hover:bg-[#F6F2F7]'
+                    )}
+                  >
+                    {/* Avatar */}
+                    <div className="relative shrink-0">
+                      <Avatar name={name} url={otherPerson?.avatar_url} size={12} />
+                      {/* Unread dot */}
+                      {hasUnread && !isSelected && (
+                        <span className="absolute -right-0.5 -top-0.5 size-3 rounded-full border-2 border-white bg-[#10B981]" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <h3 className={cn('truncate', hasUnread && !isSelected ? 'font-black' : 'font-bold')}>
+                          {name}
+                        </h3>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {hasUnread && !isSelected && (
+                            <span className="inline-flex size-2 rounded-full bg-[#10B981]" />
+                          )}
+                          <span className="text-[10px] font-bold text-[#887364]">
+                            {new Date(conv.updated_at).toLocaleDateString('es-ES', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs font-bold text-[#006E2D]">
+                        {listingTitle}
+                      </p>
+                      <p className={cn('mt-1 truncate text-[11px]', hasUnread && !isSelected ? 'font-bold text-[#1B1B1E]' : 'text-[#887364]')}>
+                        {hasUnread && !isSelected ? 'Nuevo mensaje' : 'Abrir conversación...'}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </aside>
+
+        {/* ── CHAT AREA ── */}
+        <section
+          className={cn(
+            'flex flex-1 flex-col bg-[#FBF8FC]',
+            !showChatMobile ? 'hidden md:flex' : 'flex'
+          )}
+        >
+          {activeConversation ? (
+            <>
+              {/* Chat header */}
+              <div className="flex flex-col border-b border-[#E4E1E6] bg-white lg:flex-row">
+                <div className="flex flex-1 items-center gap-3 p-4">
+                  <button
+                    type="button"
+                    onClick={handleBackToList}
+                    className="grid size-10 shrink-0 place-items-center rounded-full bg-[#F0EDF1] md:hidden"
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+
+                  {(() => {
+                    const other =
+                      profile.role === 'student'
+                        ? (activeConversation as any).owner
+                        : (activeConversation as any).student
+                    const name = `${other?.first_name || 'Usuario'} ${other?.last_name || ''}`.trim()
+                    return (
+                      <>
+                        <Avatar name={name} url={other?.avatar_url} size={10} />
+                        <div>
+                          <h2 className="flex items-center gap-2 font-black leading-tight">
+                            {name}
+                            {profile.role === 'owner' && (
+                              <span className="rounded-full bg-[#FFF7CC] px-2 py-0.5 text-[9px] uppercase tracking-wider text-[#8D4B00]">
+                                Estudiante
+                              </span>
+                            )}
+                            {profile.role === 'student' && (
+                              <span className="rounded-full bg-[#EAE7EB] px-2 py-0.5 text-[9px] uppercase tracking-wider text-[#554336]">
+                                Propietario
+                              </span>
+                            )}
+                          </h2>
+                          <div className="flex items-center gap-1 text-[11px] font-bold text-[#006E2D]">
+                            <ShieldCheck size={12} /> Cuenta verificada
+                          </div>
+                        </div>
+                      </>
+                    )
+                  })()}
+                </div>
+
+                {/* Listing info */}
+                <div className="flex items-center gap-3 border-t border-[#E4E1E6] bg-[#F6F2F7] p-3 lg:border-l lg:border-t-0 lg:bg-transparent">
+                  <div className="size-12 shrink-0 overflow-hidden rounded-xl bg-[#EAE7EB]">
+                    {(activeConversation as any).listing?.listing_images?.[0] ? (
+                      <img
+                        src={getListingImageUrl(
+                          (activeConversation as any).listing.listing_images[0].storage_path
+                        )}
+                        alt="Alojamiento"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                        <Home size={16} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[10px] font-black uppercase tracking-wider text-[#887364]">
+                      Alojamiento
+                    </p>
+                    <p className="truncate text-xs font-black">
+                      {(activeConversation as any).listing?.title || 'Alojamiento no disponible'}
+                    </p>
+                    {(activeConversation as any).listing && (
+                      <Link
+                        href={`/alojamiento/${(activeConversation as any).listing.id}`}
+                        className="mt-0.5 text-[10px] font-bold text-[#8D4B00] hover:underline"
+                      >
+                        Ver detalles
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages list */}
+              <div className="custom-scrollbar flex flex-1 flex-col overflow-y-auto p-4">
+                <div className="mx-auto mb-6 max-w-sm rounded-2xl bg-[#FFF7CC] p-3 text-center text-[10px] text-[#8D4B00]">
+                  <Lock className="mx-auto mb-1 size-3" />
+                  <strong>Chat Seguro Habitat</strong>
+                  <br />
+                  Nunca transfieras dinero fuera de la plataforma ni compartas datos bancarios.
+                </div>
+
+                {loadingMsgs ? (
+                  <div className="flex flex-1 items-center justify-center p-10">
+                    <Loader2 className="size-8 animate-spin text-primary" />
+                  </div>
+                ) : msgsError ? (
+                  <div className="flex-1 p-6 text-center text-red-600">
+                    <TriangleAlert size={32} className="mx-auto mb-2" />
+                    <p className="text-sm font-bold">{msgsError}</p>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex flex-1 flex-col items-center justify-center p-10 text-center text-[#887364]">
+                    <MessageSquare size={40} className="mb-4 opacity-30" />
+                    <p className="text-sm font-bold">Aún no hay mensajes</p>
+                    <p className="text-xs">Escribe algo para iniciar la conversación.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {messages.map((msg) => {
+                      const isMe = msg.sender_id === profile.id
+                      const time = new Date(msg.created_at).toLocaleTimeString('es-ES', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                      return (
+                        <div
+                          key={msg.id}
+                          className={cn(
+                            'flex w-full max-w-[85%] flex-col gap-1 sm:max-w-[70%]',
+                            isMe ? 'self-end items-end' : 'self-start items-start'
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'rounded-2xl px-4 py-2 text-sm',
+                              isMe
+                                ? 'rounded-br-sm bg-[#18181B] text-white'
+                                : 'rounded-bl-sm border border-[#E4E1E6] bg-white text-[#1B1B1E]'
+                            )}
+                          >
+                            {msg.body}
+                          </div>
+                          <span className="text-[9px] font-bold text-[#887364]">{time}</span>
+                        </div>
+                      )
+                    })}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Input */}
+              <div className="border-t border-[#E4E1E6] bg-white p-3 sm:p-4">
+                <form
+                  onSubmit={handleSendMessage}
+                  className="mx-auto flex w-full max-w-4xl items-end gap-2 rounded-3xl bg-[#F0EDF1] p-2 focus-within:ring-2 focus-within:ring-[#18181B]"
+                >
+                  <button
+                    type="button"
+                    aria-label="Adjuntar"
+                    className="grid size-10 shrink-0 place-items-center rounded-full text-[#887364] transition hover:bg-[#E4E1E6] hover:text-[#18181B]"
+                  >
+                    <Paperclip size={18} />
+                  </button>
+                  <textarea
+                    rows={1}
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Escribe un mensaje..."
+                    maxLength={1000}
+                    className="custom-scrollbar max-h-32 min-h-[40px] w-full resize-none bg-transparent py-2.5 text-sm outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleSendMessage(e)
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newMessage.trim() || sending}
+                    aria-label="Enviar mensaje"
+                    className={cn(
+                      'grid size-10 shrink-0 place-items-center rounded-full bg-[#18181B] text-white transition',
+                      !newMessage.trim() || sending ? 'cursor-not-allowed opacity-50' : 'hover:scale-105'
+                    )}
+                  >
+                    {sending ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Send size={16} className="mr-0.5" />
+                    )}
+                  </button>
+                </form>
+              </div>
+            </>
+          ) : (
+            <div className="hidden flex-1 flex-col items-center justify-center p-10 text-center text-[#887364] md:flex">
+              <MessageSquare size={64} className="mb-4 opacity-20" />
+              <h2 className="mb-2 text-xl font-black text-[#1B1B1E]">Tus mensajes</h2>
+              <p className="max-w-sm text-sm">
+                Selecciona una conversación del panel izquierdo para leer los mensajes o enviar uno nuevo.
+              </p>
+            </div>
+          )}
+        </section>
+      </main>
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+          .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+          .custom-scrollbar::-webkit-scrollbar-thumb { background: #E4E1E6; border-radius: 10px; }
+        `
+      }} />
+    </div>
+  )
 }
 
 export default function MessagesPage() {
-  const [selected, setSelected] = useState(mockConversations[0])
-  const [messages, setMessages] = useState(selected.messages)
-  const [text, setText] = useState('')
-  const [query, setQuery] = useState('')
-  const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
-  const [showVisit, setShowVisit] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const filteredConversations = useMemo(() => mockConversations.filter(item => `${item.name} ${item.room.title}`.toLowerCase().includes(query.toLowerCase())), [query])
-
-  function openConversation(conversation: typeof mockConversations[number]) {
-    setSelected(conversation)
-    setMessages(conversation.messages)
-    setMobileView('chat')
-  }
-
-  function sendMessage(event: FormEvent) {
-    event.preventDefault()
-    const cleanText = text.trim()
-    if (!cleanText) return
-    setMessages(current => [...current, { from: 'me', text: cleanText, time: 'Ahora' }])
-    setText('')
-  }
-
-  function requestVisit() {
-    setShowVisit(false)
-    setToast('Solicitud de visita preparada para enviar')
-    setTimeout(() => setToast(''), 3000)
-  }
-
-  const meta = conversationMeta[selected.id as keyof typeof conversationMeta] ?? conversationMeta[1]
-
-  return <div className="min-h-screen bg-[#FBF8FC] text-[#1B1B1E]"><AppHeader /><main className="pt-5"><div className="border-b border-[#E4E1E6] bg-white"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8"><div className="flex items-center gap-2 text-xs text-[#554336]"><Link href="/" className="hover:text-[#8D4B00]">Inicio</Link><span>›</span><strong>Mensajería y Chat Seguro</strong></div><span className="inline-flex items-center gap-1.5 rounded-full bg-[#D9FBE0] px-3 py-1 text-[11px] font-black text-[#006E2D]"><span className="size-2 rounded-full bg-[#006E2D]" /> Conexión segura cifrada</span></div></div><div className="mx-auto max-w-7xl px-0 py-6 sm:px-6 lg:px-8"><div className="grid min-h-[calc(100vh-190px)] overflow-hidden border-y border-[#E4E1E6] bg-[#F6F2F7] sm:rounded-2xl sm:border lg:grid-cols-12"><aside className={`${mobileView === 'list' ? 'block' : 'hidden'} border-r border-[#E4E1E6] bg-white lg:col-span-4 lg:block`}><div className="border-b border-[#E4E1E6] p-4"><div className="flex items-center justify-between"><h1 className="flex items-center gap-2 text-lg font-black">Mensajes <span className="rounded-full bg-[#FACC15] px-2 py-0.5 text-xs">2</span></h1><button type="button" aria-label="Marcar como leídos" className="grid size-9 place-items-center rounded-lg hover:bg-[#F0EDF1]"><CheckCheck size={17} /></button></div><label className="relative mt-4 block"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#887364]" /><input className="field bg-[#F6F2F7] pl-9" placeholder="Buscar mensajes o alojamientos..." value={query} onChange={event => setQuery(event.target.value)} /></label><div className="mt-3 flex gap-2 overflow-x-auto"><button type="button" className="whitespace-nowrap rounded-full bg-[#18181B] px-3 py-1.5 text-[11px] font-black text-white">Todos (3)</button><button type="button" className="whitespace-nowrap rounded-full bg-[#F0EDF1] px-3 py-1.5 text-[11px] font-bold">Visitas <span className="ml-1 size-1.5 rounded-full bg-[#8D4B00]" /></button><button type="button" className="whitespace-nowrap rounded-full bg-[#F0EDF1] px-3 py-1.5 text-[11px] font-bold">No leídos (1)</button></div></div><div className="divide-y divide-[#E4E1E6]">{filteredConversations.map(conversation => { const itemMeta = conversationMeta[conversation.id as keyof typeof conversationMeta] ?? conversationMeta[1]; return <button type="button" key={conversation.id} onClick={() => openConversation(conversation)} className={`relative flex w-full gap-3 p-4 text-left transition hover:bg-[#F6F2F7] ${selected.id === conversation.id ? 'bg-[#F6F2F7]' : ''}`}>{selected.id === conversation.id && <span className="absolute bottom-0 left-0 top-0 w-1 bg-[#FACC15]" />}<span className="relative grid size-12 shrink-0 place-items-center rounded-full bg-[#FACC15] text-sm font-black">{conversation.initials}{itemMeta.online && <span className="absolute bottom-0 right-0 size-3.5 rounded-full border-2 border-white bg-[#006E2D]" />}</span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="flex items-center gap-1 text-sm font-black">{conversation.name}<ShieldCheck size={14} className="text-[#006E2D]" /></span><small className="text-[11px] text-[#887364]">{conversation.time}</small></span><span className="mt-1 block truncate text-xs font-bold text-[#8D4B00]">{itemMeta.roomLabel}</span><span className="mt-1 block truncate text-xs text-[#554336]">{conversation.preview}</span><span className="mt-2 flex items-center justify-between"><span className="rounded-full bg-[#F0EDF1] px-2 py-1 text-[10px] font-bold text-[#554336]"><CalendarDays className="mr-1 inline size-3" />{itemMeta.status}</span>{itemMeta.unread > 0 && <span className="grid size-5 place-items-center rounded-full bg-[#FACC15] text-[10px] font-black">{itemMeta.unread}</span>}</span></span></button>})}</div><div className="flex items-center justify-between border-t border-[#E4E1E6] bg-[#F6F2F7] p-3 text-[11px] text-[#554336]"><span><ShieldCheck className="mr-1 inline size-3.5 text-[#006E2D]" /> Identidades validadas</span><button type="button" className="font-bold">Ayuda</button></div></aside><section className={`${mobileView === 'chat' ? 'flex' : 'hidden'} min-w-0 flex-col bg-[#FBF8FC] lg:col-span-5 lg:flex`}><header className="flex items-center justify-between gap-3 border-b border-[#E4E1E6] bg-white p-4"><div className="flex min-w-0 items-center gap-3"><button type="button" aria-label="Volver a conversaciones" onClick={() => setMobileView('list')} className="grid size-9 place-items-center rounded-lg hover:bg-[#F0EDF1] lg:hidden"><ArrowLeft size={17} /></button><span className="relative grid size-11 shrink-0 place-items-center rounded-full bg-[#FACC15] text-sm font-black">{selected.initials}<span className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-white bg-[#006E2D]" /></span><div className="min-w-0"><div className="flex items-center gap-1"><h2 className="truncate text-base font-black">{selected.name}</h2><span className="rounded-md bg-[#D9FBE0] px-1.5 py-0.5 text-[10px] font-black text-[#006E2D]">Verificado</span></div><p className="truncate text-xs text-[#554336]">{selected.room.title} · S/ {selected.room.price}/mes</p><p className="text-[11px] font-bold text-[#006E2D]">● En línea ahora</p></div></div><div className="flex shrink-0 items-center gap-1"><button type="button" onClick={() => setShowVisit(true)} className="inline-flex items-center gap-1 rounded-lg bg-[#FACC15] px-2.5 py-2 text-[11px] font-black"><CalendarDays size={15} /><span className="hidden sm:inline">Solicitar visita</span></button><button type="button" aria-label="Más opciones" className="grid size-9 place-items-center rounded-lg hover:bg-[#F0EDF1]"><MoreVertical size={17} /></button></div></header><div className="flex items-start gap-2 border-b border-[#FACC15]/30 bg-[#FFF7CC] px-4 py-3 text-xs leading-5"><ShieldCheck size={17} className="mt-0.5 shrink-0 text-[#8D4B00]" /><p><strong>Consejo de seguridad:</strong> Agenda siempre tu visita presencial antes de realizar cualquier compromiso.</p></div><div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5"><div className="flex justify-center"><span className="rounded-full bg-[#F0EDF1] px-3 py-1 text-[11px] text-[#554336]">Hoy, 15 de octubre</span></div>{messages.map((message, index) => <div key={`${message.time}-${index}`} className={`flex max-w-[88%] gap-2 ${message.from === 'me' ? 'ml-auto flex-col items-end' : 'mr-auto'}`}>{message.from !== 'me' && <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#FACC15] text-[10px] font-black">{selected.initials}</span>}<div className={`rounded-2xl p-3.5 text-sm leading-6 shadow-sm ${message.from === 'me' ? 'rounded-tr-sm border border-[#FACC15]/40 bg-[#FFF7CC]' : 'rounded-tl-sm bg-white'}`}>{message.text}</div><span className="px-1 text-[10px] text-[#887364]">{message.time}{message.from === 'me' && <CheckCheck className="ml-1 inline size-3.5 text-[#8D4B00]" />}</span></div>)}<div className="rounded-2xl bg-white p-4 shadow-sm ring-2 ring-[#FDE68A]"><div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><div className="grid size-9 place-items-center rounded-xl bg-[#FFE4C7]"><CalendarDays size={19} className="text-[#8D4B00]" /></div><div><p className="text-[10px] font-black uppercase tracking-wider text-[#8D4B00]">Coordinación de visita</p><h3 className="font-black">Visita presencial programada</h3></div></div><span className="rounded-full bg-[#FFE4C7] px-2 py-1 text-[10px] font-black text-[#8D4B00]">Pendiente</span></div><div className="mt-3 grid gap-2 rounded-xl bg-[#F6F2F7] p-3 text-xs sm:grid-cols-2"><p><Clock3 className="mr-1 inline size-4 text-[#887364]" /><strong>Sábado 19 de octubre</strong><br />11:00 AM</p><p><MapPin className="mr-1 inline size-4 text-[#887364]" /><strong>Punto de encuentro</strong><br />Calle León Velarde, Yanahuara</p></div><div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-[#554336]"><span><Check className="mr-1 inline size-3.5 text-[#006E2D]" />Pendiente de confirmación</span><button type="button" className="font-bold text-[#BA1A1A]">Reprogramar</button></div></div></div><form onSubmit={sendMessage} className="border-t border-[#E4E1E6] bg-white p-4"><div className="flex items-center gap-2"><button type="button" aria-label="Adjuntar archivo" className="grid size-10 place-items-center rounded-xl hover:bg-[#F0EDF1]"><Paperclip size={19} /></button><button type="button" aria-label="Adjuntar foto" className="grid size-10 place-items-center rounded-xl hover:bg-[#F0EDF1]"><ImagePlus size={19} /></button><input className="field flex-1 bg-[#F6F2F7]" placeholder={`Escribe un mensaje a ${selected.name}...`} value={text} onChange={event => setText(event.target.value)} /><button type="submit" aria-label="Enviar mensaje" className="grid size-11 place-items-center rounded-xl bg-[#FACC15] shadow-sm"><Send size={18} /></button></div><div className="mt-2 flex items-center justify-between px-1 text-[10px] text-[#887364]"><span>Presiona Enter para enviar</span><span className="font-bold text-[#006E2D]"><Lock className="mr-1 inline size-3" /> Chat cifrado</span></div></form></section><aside className="hidden space-y-4 p-4 lg:col-span-3 lg:block"><section className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="relative h-44"><img src={selected.room.image} alt={selected.room.title} className="size-full object-cover" /><div className="absolute left-2 top-2 flex gap-1"><span className="rounded-full bg-[#006E2D] px-2 py-1 text-[10px] font-black text-white">✓ Verificado</span><span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-black">Disponible</span></div><Link href={`/alojamiento/${selected.room.id}`} className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2 py-1 text-[10px] font-black">+6 fotos</Link></div><div className="space-y-3 p-4"><div className="flex items-baseline gap-1"><strong className="text-2xl font-black text-[#A16207]">S/ {selected.room.price}</strong><span className="text-xs text-[#887364]">/ mes</span><span className="ml-auto text-[10px] font-bold text-[#006E2D]">Sin comisión</span></div><h2 className="font-black leading-5">{selected.room.title}</h2><p className="flex gap-1 text-xs text-[#554336]"><MapPin size={14} className="text-[#8D4B00]" /> {selected.room.district} · {selected.room.distance}</p><div className="flex flex-wrap gap-1.5">{selected.room.amenities.slice(0, 5).map(item => <span key={item} className="rounded-lg bg-[#F6F2F7] px-2 py-1 text-[10px] font-bold">{item}</span>)}</div><button type="button" onClick={() => setShowVisit(true)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FACC15] px-3 py-3 text-xs font-black"><CalendarDays size={15} /> Solicitar visita</button><Link href={`/alojamiento/${selected.room.id}`} className="block rounded-xl bg-[#F0EDF1] px-3 py-2.5 text-center text-xs font-bold">Ver anuncio completo</Link></div></section><section className="rounded-2xl bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><div className="grid size-11 place-items-center rounded-full bg-[#FACC15] font-black">CM</div><div><h2 className="font-black">{selected.name}</h2><p className="text-xs text-[#554336]">Propietario en Yanahuara</p><p className="mt-1 text-[11px] font-bold text-[#8D4B00]">Miembro verificado desde 2024</p></div></div><div className="mt-4 space-y-2 rounded-xl bg-[#F6F2F7] p-3 text-xs"><div className="flex justify-between"><span className="text-[#554336]"><Clock3 className="mr-1 inline size-3.5" />Tiempo de respuesta</span><strong>&lt; 1 hora</strong></div><div className="flex justify-between"><span className="text-[#554336]"><Star className="mr-1 inline size-3.5 text-[#D97706]" />Calificación</span><strong>4.9 / 5.0</strong></div><div className="flex justify-between"><span className="text-[#554336]"><ShieldCheck className="mr-1 inline size-3.5 text-[#006E2D]" />Alojamiento</span><strong>Verificado</strong></div></div><div className="mt-3 flex justify-between text-[10px] text-[#554336]"><span>⌂ No fumadores</span><span>Visitas 8am - 10pm</span></div></section><div className="flex items-start gap-2 rounded-xl bg-[#F0EDF1] p-3 text-[11px] text-[#554336]"><ShieldCheck size={16} className="shrink-0 text-[#006E2D]" />Chat protegido por Habitat. Nunca compartas pagos fuera de la plataforma.</div></aside></div></div></main><Footer />{showVisit && <VisitModal onClose={() => setShowVisit(false)} onSubmit={requestVisit} />}{toast && <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#1B1B1E] px-5 py-3 text-sm font-bold text-white shadow-xl">{toast}</div>}</div>
-}
-
-function VisitModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: () => void }) {
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-[#1B1B1E]/50 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-wider text-[#8D4B00]">Solicitar visita</p><h2 className="mt-1 text-xl font-black">Coordina con el propietario</h2></div><button type="button" aria-label="Cerrar" onClick={onClose} className="grid size-10 place-items-center rounded-full bg-[#F0EDF1]"><X size={17} /></button></div><div className="mt-5 grid gap-4"><label className="grid gap-2 text-sm font-bold">Tipo de visita<select className="field"><option>Presencial</option><option>Videollamada</option></select></label><label className="grid gap-2 text-sm font-bold">Día preferido<input className="field" type="date" /></label><label className="grid gap-2 text-sm font-bold">Turno<select className="field"><option>Mañana · 9:00 - 12:00</option><option>Tarde · 2:00 - 5:00</option></select></label><textarea className="field min-h-24" placeholder="Mensaje opcional para el propietario" /><button type="button" onClick={onSubmit} className="rounded-xl bg-[#FACC15] px-4 py-3 text-sm font-black">Enviar solicitud de visita</button></div></div></div>
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="size-12 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <MessagesContent />
+    </Suspense>
+  )
 }

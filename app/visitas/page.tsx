@@ -21,6 +21,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { AppHeader, Footer, Toast } from '@/components/Shared'
+import { ContactOwnerButton } from '@/components/ContactOwnerButton'
 import { getStudentVisits, updateVisitStatus, type VisitRequest, type VisitStatus } from '@/lib/supabase/visits'
 import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
 import { getListingImageUrl } from '@/lib/supabase/storage'
@@ -294,10 +295,7 @@ export default function VisitsPage() {
                             ) : (
                               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                                 <div className="flex flex-wrap gap-2">
-                                  <Link href="/mensajes" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold hover:bg-primary-hover">
-                                    <MessageSquare size={16} />
-                                    Chat Seguro Habitat
-                                  </Link>
+                                  <ContactOwnerButton listingId={visit.listing.id} listingStatus={visit.listing.status}>Chat Seguro Habitat</ContactOwnerButton>
                                 </div>
                                 {canCancel && (
                                   <div className="flex gap-3 text-sm font-bold">
