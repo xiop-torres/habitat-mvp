@@ -19,9 +19,10 @@ import { AppHeader, Footer } from '@/components/Shared'
 import HabitatMap from '@/components/HabitatMap'
 import { FavoriteButton } from '@/components/FavoriteButton'
 import { getListingImageUrl } from '@/lib/supabase/storage'
+import { resolveUniversity } from '@/lib/universities'
 
 // Filtros de UI — se aplican client-side sobre los datos reales
-const universityFilters = ['UCSM', 'UNSA', 'Universidad Católica San Pablo', 'UTP', 'La Salle']
+const universityFilters = ['UCSM', 'UNSA', 'Universidad Católica San Pablo', 'UTP']
 const accommodationFilters = ['Habitación individual', 'Habitación compartida', 'Departamento', 'Casa / Residencia']
 const serviceFilters = ['WiFi', 'Agua caliente', 'Cocina equipada', 'Lavandería', 'Amoblado', 'Baño privado']
 
@@ -57,11 +58,19 @@ export default function ListingsClient({
     const filtered = allListings.filter((listing) => {
       // Universidad
       const uniValue = listing.university_nearby ?? ''
+      const listingUni = resolveUniversity(uniValue)
+      const activeUnies = [...selectedUniversities, university].filter(Boolean)
+      
       const matchesUniversity =
-        !university && selectedUniversities.length === 0
+        activeUnies.length === 0
           ? true
-          : selectedUniversities.some((u) => uniValue.toLowerCase().includes(u.toLowerCase())) ||
-            uniValue.toLowerCase().includes(university.toLowerCase())
+          : activeUnies.some((u) => {
+              const activeUni = resolveUniversity(u)
+              if (activeUni && listingUni) {
+                return activeUni.id === listingUni.id
+              }
+              return uniValue.toLowerCase().includes(u.toLowerCase())
+            })
 
       // Tipo de alojamiento (property_type)
       const matchesType =
@@ -205,7 +214,12 @@ export default function ListingsClient({
                   label={item}
                   checked={selectedUniversities.includes(item) || university === item}
                   onChange={() => toggleValue(item, setSelectedUniversities, selectedUniversities)}
-                  count={allListings.filter((l) => (l.university_nearby ?? '').toLowerCase().includes(item.toLowerCase())).length}
+                  count={allListings.filter((l) => {
+                    const lUni = resolveUniversity(l.university_nearby)
+                    const filterUni = resolveUniversity(item)
+                    if (lUni && filterUni) return lUni.id === filterUni.id
+                    return (l.university_nearby ?? '').toLowerCase().includes(item.toLowerCase())
+                  }).length}
                 />
               ))}
             </FilterGroup>
@@ -430,8 +444,20 @@ export default function ListingsClient({
          </div>
          <p className="mt-1 text-xs font-medium text-[#71717A]">
            {listing.district}
-           {listing.university_nearby && ` · Cerca de ${listing.university_nearby}`}
-           {listing.distance_label && ` · ${listing.distance_label}`}
+           {(() => {
+             const uniName = resolveUniversity(listing.university_nearby)?.shortName || listing.university_nearby
+             const hasUni = Boolean(uniName)
+             const hasDist = Boolean(listing.distance_label)
+             
+             if (hasUni && hasDist) {
+               return ` · ${uniName} · ${listing.distance_label}`
+             } else if (hasUni) {
+               return ` · Cerca de ${uniName}`
+             } else if (hasDist) {
+               return ` · ${listing.distance_label}`
+             }
+             return null
+           })()}
          </p>
          {listing.amenities.length > 0 && (
            <div className="mt-3 flex flex-wrap gap-1.5">

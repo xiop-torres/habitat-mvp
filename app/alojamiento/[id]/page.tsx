@@ -23,6 +23,7 @@ import { FavoriteButton } from '@/components/FavoriteButton'
 import { ContactOwnerButton } from '@/components/ContactOwnerButton'
 import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
 import { getPublicCoordinates } from '@/lib/location'
+import { resolveUniversity } from '@/lib/universities'
 
 
 
@@ -177,7 +178,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
             {listing.distance_label && (
               <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-xs font-bold text-[#1D4ED8]">
                 {listing.distance_label}
-                {listing.university_nearby && ` de ${listing.university_nearby}`}
+                {listing.university_nearby && ` de ${resolveUniversity(listing.university_nearby)?.shortName || listing.university_nearby}`}
               </span>
             )}
           </div>
@@ -330,9 +331,23 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black">Ubicación</h2>
-                  <p className="mt-1 text-xs text-[#71717A]">
+                  <p className="mt-1 text-xs text-[#71717A] leading-5">
                     {listing.district}, Arequipa
-                    {listing.university_nearby && ` · Cerca de ${listing.university_nearby}`}
+                    <br />
+                    {(() => {
+                      const uniName = resolveUniversity(listing.university_nearby)?.shortName || listing.university_nearby
+                      const hasUni = Boolean(uniName)
+                      const hasDist = Boolean(listing.distance_label)
+                      
+                      if (hasUni && hasDist) {
+                        return <span className="font-medium text-[#18181B]">Cerca de {uniName} · {listing.distance_label}</span>
+                      } else if (hasUni) {
+                        return <span className="font-medium text-[#18181B]">Cerca de {uniName}</span>
+                      } else if (hasDist) {
+                        return <span className="font-medium text-[#18181B]">{listing.distance_label}</span>
+                      }
+                      return null
+                    })()}
                   </p>
                 </div>
               </div>

@@ -22,6 +22,8 @@ import { LocationPicker } from '@/components/LocationPicker'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { CreateListingInput } from '@/lib/supabase/listings'
 import { STORAGE_BUCKETS, STORAGE_LIMITS, getListingStoragePath } from '@/lib/supabase/storage'
+import { UNIVERSITIES } from '@/lib/universities'
+import { generateDistanceLabel } from '@/lib/location'
 
 const steps = ['Tipo', 'Detalles', 'Ubicación', 'Universidad', 'Precio', 'Servicios', 'Fotos', 'Plazos', 'Reglas', 'Vista previa']
 const stepTitles = [
@@ -234,6 +236,8 @@ export default function NewPropertyPage() {
 
       // Build payload — owner_id is set server-side by RLS, but browser client
       // requires it in the INSERT. We use the authenticated user id only.
+      const distanceLabel = generateDistanceLabel(lat, lng, university)
+      
       const input: CreateListingInput & { owner_id: string } = {
         owner_id: user.id,
         title: title.trim(),
@@ -244,7 +248,7 @@ export default function NewPropertyPage() {
         lat,
         lng,
         university_nearby: university,
-        distance_label: null,
+        distance_label: distanceLabel,
         price_monthly: Number(price),
         currency: 'PEN',
         amenities: services,
@@ -453,18 +457,18 @@ export default function NewPropertyPage() {
               {/* PASO 3 — Universidad */}
               {step === 3 && (
                 <div className="grid gap-3">
-                  {['UCSM', 'UNSA', 'Universidad Católica San Pablo', 'UTP'].map(item => (
+                  {UNIVERSITIES.map(uni => (
                     <button
                       type="button"
-                      key={item}
-                      onClick={() => setUniversity(item)}
+                      key={uni.id}
+                      onClick={() => setUniversity(uni.storedValue)}
                       className={cn(
                         'flex items-center justify-between rounded-xl border p-4 text-left text-sm font-bold',
-                        university === item ? 'border-primary bg-primary/20' : 'border-border bg-secondary',
+                        university === uni.storedValue ? 'border-primary bg-primary/20' : 'border-border bg-secondary',
                       )}
                     >
-                      <span>{item}</span>
-                      {university === item && <Check size={17} />}
+                      <span>{uni.fullName} ({uni.shortName})</span>
+                      {university === uni.storedValue && <Check size={17} />}
                     </button>
                   ))}
                 </div>

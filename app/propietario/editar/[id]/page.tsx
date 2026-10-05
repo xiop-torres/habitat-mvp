@@ -31,6 +31,8 @@ import { AppHeader, Footer } from '@/components/Shared'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Listing } from '@/lib/supabase/listings'
 import { STORAGE_BUCKETS, STORAGE_LIMITS, getListingStoragePath, getListingImageUrl } from '@/lib/supabase/storage'
+import { UNIVERSITIES, resolveUniversity } from '@/lib/universities'
+import { generateDistanceLabel } from '@/lib/location'
 
 const allAmenities = ['WiFi', 'Baño privado', 'Escritorio amplio', 'Agua caliente', 'Cocina equipada', 'Lavandería', 'Bicicletero', 'Acepta mascotas', 'Amoblado']
 const photos = [
@@ -59,6 +61,7 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
   const [propertyType, setPropertyType] = useState('Habitación individual')
   const [district, setDistrict] = useState('')
   const [addressRef, setAddressRef] = useState('')
+  const [university, setUniversity] = useState<string>('')
   const [lat, setLat] = useState<number | null>(null)
   const [lng, setLng] = useState<number | null>(null)
   const [price, setPrice] = useState('')
@@ -117,6 +120,14 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       setPropertyType(data.property_type || 'Habitación individual')
       setDistrict(data.district || '')
       setAddressRef(data.address_reference || '')
+      
+      const resolvedUni = resolveUniversity(data.university_nearby)
+      if (resolvedUni) {
+        setUniversity(resolvedUni.storedValue)
+      } else {
+        setUniversity(data.university_nearby || '')
+      }
+
       setLat(data.lat)
       setLng(data.lng)
       setPrice(data.price_monthly?.toString() || '')
@@ -207,6 +218,8 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
     setErrorMsg('')
 
     const supabase = createSupabaseBrowserClient()
+    const distanceLabel = generateDistanceLabel(lat, lng, university)
+
     const updates = {
       title,
       description,
@@ -215,6 +228,8 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       address_reference: addressRef,
       lat,
       lng,
+      university_nearby: university || null,
+      distance_label: distanceLabel,
       price_monthly: Number(price) || 0,
       amenities: selectedAmenities,
       available_from: availableFrom || null,
@@ -560,11 +575,28 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
                     Dirección de referencia
                     <input className="field" value={addressRef} onChange={e => setAddressRef(e.target.value)} />
                   </label>
-                  <div className="mt-4">
-                    <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng) }} />
-                  </div>
+                  <label className="grid gap-2 text-sm font-black mt-2">
+                    ¿Qué campus queda más cerca?
+                    <div className="grid gap-2 mt-2">
+                      {UNIVERSITIES.map(uni => (
+                        <button
+                          type="button"
+                          key={uni.id}
+                          onClick={() => setUniversity(uni.storedValue)}
+                          className={`flex items-center justify-between rounded-xl border p-4 text-left text-sm font-bold ${
+                            university === uni.storedValue ? 'border-[#FACC15] bg-[#FACC15]/10 text-[#18181B]' : 'border-[#E4E1E6] bg-white text-[#554336]'
+                          }`}
+                        >
+                          <span>{uni.fullName} ({uni.shortName})</span>
+                          {university === uni.storedValue && <Check size={17} />}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
                 </div>
-
+                <div className="mt-6 md:mt-0">
+                  <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng) }} />
+                </div>
               </div>
             </EditorSection>
 
