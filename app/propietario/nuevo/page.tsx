@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { AppHeader, Footer } from '@/components/Shared'
 import { cn } from '@/lib/utils'
+import { LocationPicker } from '@/components/LocationPicker'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { CreateListingInput } from '@/lib/supabase/listings'
 import { STORAGE_BUCKETS, STORAGE_LIMITS, getListingStoragePath } from '@/lib/supabase/storage'
@@ -101,6 +102,8 @@ export default function NewPropertyPage() {
   // Step 2 — Ubicación
   const [district, setDistrict] = useState('')
   const [addressReference, setAddressReference] = useState('')
+  const [lat, setLat] = useState<number | null>(null)
+  const [lng, setLng] = useState<number | null>(null)
 
   // Step 3 — Universidad
   const [university, setUniversity] = useState('UCSM')
@@ -238,8 +241,8 @@ export default function NewPropertyPage() {
         property_type: propertyType,
         district: district.trim(),
         address_reference: addressReference.trim() || null,
-        lat: null,
-        lng: null,
+        lat,
+        lng,
         university_nearby: university,
         distance_label: null,
         price_monthly: Number(price),
@@ -440,6 +443,9 @@ export default function NewPropertyPage() {
                   <div className="flex items-start gap-3 rounded-xl bg-secondary p-4 text-sm text-muted-foreground sm:col-span-2">
                     <MapPin className="shrink-0 text-yellow-700" size={19} />
                     La dirección exacta solo se mostrará después de confirmar una visita.
+                  </div>
+                  <div className="sm:col-span-2 mt-4">
+                    <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng) }} />
                   </div>
                 </div>
               )}
@@ -693,3 +699,4 @@ export default function NewPropertyPage() {
     </div>
   )
 }
+

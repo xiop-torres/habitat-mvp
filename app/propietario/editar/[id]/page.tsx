@@ -26,8 +26,8 @@ import {
   X,
   Zap,
 } from 'lucide-react'
+import { LocationPicker } from '@/components/LocationPicker'
 import { AppHeader, Footer } from '@/components/Shared'
-import HabitatMap from '@/components/HabitatMap'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Listing } from '@/lib/supabase/listings'
 import { STORAGE_BUCKETS, STORAGE_LIMITS, getListingStoragePath, getListingImageUrl } from '@/lib/supabase/storage'
@@ -59,6 +59,8 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
   const [propertyType, setPropertyType] = useState('Habitación individual')
   const [district, setDistrict] = useState('')
   const [addressRef, setAddressRef] = useState('')
+  const [lat, setLat] = useState<number | null>(null)
+  const [lng, setLng] = useState<number | null>(null)
   const [price, setPrice] = useState('')
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([])
   const [availableFrom, setAvailableFrom] = useState('')
@@ -115,6 +117,8 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       setPropertyType(data.property_type || 'Habitación individual')
       setDistrict(data.district || '')
       setAddressRef(data.address_reference || '')
+      setLat(data.lat)
+      setLng(data.lng)
       setPrice(data.price_monthly?.toString() || '')
       setSelectedAmenities(data.amenities || [])
       setAvailableFrom(data.available_from || '')
@@ -209,6 +213,8 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       property_type: propertyType,
       district,
       address_reference: addressRef,
+      lat,
+      lng,
       price_monthly: Number(price) || 0,
       amenities: selectedAmenities,
       available_from: availableFrom || null,
@@ -366,10 +372,6 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
     )
   }
 
-  const hasCoordinates = listing.lat !== null && listing.lng !== null
-  const mapHomes = hasCoordinates
-    ? [{ id: listing.id, title, district, price: Number(price), lat: listing.lat!, lng: listing.lng! }]
-    : []
 
   return (
     <div className="min-h-screen bg-[#FBF8FC] text-[#1B1B1E]">
@@ -558,17 +560,11 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
                     Dirección de referencia
                     <input className="field" value={addressRef} onChange={e => setAddressRef(e.target.value)} />
                   </label>
+                  <div className="mt-4">
+                    <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng) }} />
+                  </div>
                 </div>
-                <div>
-                  {hasCoordinates ? (
-                    <HabitatMap homes={mapHomes} className="h-[280px]" />
-                  ) : (
-                    <div className="flex h-[280px] items-center justify-center rounded-2xl border border-dashed border-[#D4D4D8] bg-[#F6F2F7] text-center">
-                      <p className="text-xs font-bold text-[#887364]">Ubicación exacta pendiente de configurar</p>
-                    </div>
-                  )}
-                  <p className="mt-2 text-[11px] leading-5 text-[#887364]">Por seguridad, el número exacto solo se comparte con estudiantes que reservan visita.</p>
-                </div>
+
               </div>
             </EditorSection>
 
