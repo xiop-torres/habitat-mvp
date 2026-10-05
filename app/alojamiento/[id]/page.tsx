@@ -15,13 +15,14 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { AppHeader, Footer, Toast, VisitRequestModal } from '@/components/Shared'
-import HabitatMap from '@/components/HabitatMap'
+import { PublicLocationMap } from '@/components/PublicLocationMap'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ListingWithImages } from '@/lib/supabase/listings'
 import { getListingImageUrl } from '@/lib/supabase/storage'
 import { FavoriteButton } from '@/components/FavoriteButton'
 import { ContactOwnerButton } from '@/components/ContactOwnerButton'
 import { useCurrentUserProfile } from '@/lib/supabase/useProfile'
+import { getPublicCoordinates } from '@/lib/location'
 
 
 
@@ -121,10 +122,8 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
     ? sortedImages.map((img) => getListingImageUrl(img.storage_path))
     : [] // vacío si no hay reales
 
-  const hasCoordinates = listing.lat !== null && listing.lng !== null
-  const mapHomes = hasCoordinates
-    ? [{ id: listing.id, title: listing.title, district: listing.district, price: listing.price_monthly, lat: listing.lat!, lng: listing.lng! }]
-    : []
+  const publicCoords = getPublicCoordinates(listing.lat, listing.lng)
+  const hasCoordinates = publicCoords !== null
 
   const availableFromFormatted = listing.available_from
     ? new Date(listing.available_from).toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -339,13 +338,17 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
               </div>
               <div className="mt-5">
                 {hasCoordinates ? (
-                  <HabitatMap homes={mapHomes} className="h-[300px] sm:h-[360px]" />
+                  <>
+                    <PublicLocationMap lat={publicCoords!.publicLat} lng={publicCoords!.publicLng} className="h-[300px] sm:h-[360px]" />
+                    <p className="mt-3 text-xs text-[#71717A]">
+                      <strong className="text-[#18181B]">Ubicación aproximada.</strong> La ubicación exacta se comparte al coordinar la visita.
+                    </p>
+                  </>
                 ) : (
                   <div className="flex h-[200px] items-center justify-center rounded-2xl border border-dashed border-[#D4D4D8] bg-[#F4F2EB] text-center">
                     <div>
                       <MapPin className="mx-auto text-[#A1A1AA]" size={28} />
-                      <p className="mt-2 text-sm font-bold text-[#71717A]">Ubicación exacta pendiente de configurar</p>
-                      <p className="mt-1 text-xs text-[#A1A1AA]">El propietario publicará las coordenadas pronto.</p>
+                      <p className="mt-2 text-sm font-bold text-[#71717A]">Ubicación aún no especificada por el propietario.</p>
                     </div>
                   </div>
                 )}
