@@ -161,9 +161,13 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
         {/* Badges */}
         <section className="mb-7">
           <div className="flex flex-wrap gap-2">
-            {listing.verified && (
+            {listing.verified ? (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[#A7F3D0] bg-[#E8F5F1] px-3 py-1.5 text-xs font-black text-[#047857]">
-                <ShieldCheck size={14} /> Verificado presencialmente
+                <ShieldCheck size={14} /> Alojamiento verificado
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E4E4E7] bg-white px-3 py-1.5 text-xs font-bold text-[#71717A]">
+                Pendiente de verificación
               </span>
             )}
             {availableFromFormatted ? (

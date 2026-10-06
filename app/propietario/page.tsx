@@ -297,7 +297,7 @@ export default function OwnerDashboard() {
                         )}
                       >
                         {isPaused ? <PauseCircle size={13} /> : <ShieldCheck size={13} />}
-                        {isPaused ? 'Pausado' : listing.verified ? 'Verificado' : 'Publicado'}
+                        {isPaused ? 'Pausado' : 'Publicado'}
                       </span>
                     </div>
 
@@ -306,7 +306,7 @@ export default function OwnerDashboard() {
                         <div>
                           <p className={cn('inline-flex items-center gap-2 text-sm font-black', isPaused ? 'text-muted-foreground' : 'text-emerald-700')}>
                             <span className={cn('size-2 rounded-full', isPaused ? 'bg-muted-foreground' : 'bg-emerald-600')} />
-                            {isPaused ? 'Pausado' : 'Activo y visible en búsquedas'}
+                            {isPaused ? 'Pausado' : 'Publicado'} {!isPaused && (listing.verified ? <span className="inline-flex items-center gap-1 text-emerald-700">&bull; <ShieldCheck size={14} /> Verificado</span> : <span className="inline-flex items-center gap-1 text-muted-foreground">&bull; Pendiente de verificación</span>)}
                           </p>
                           <h2 className="mt-2 text-xl font-black">{listing.title}</h2>
                           <p className="mt-1 text-sm text-muted-foreground">
