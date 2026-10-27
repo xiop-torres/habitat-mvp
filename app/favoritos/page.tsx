@@ -63,7 +63,7 @@ export default function FavoritesPage() {
     return (
       <div className="min-h-screen bg-background">
         <AppHeader owner />
-        <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <main className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8">
           <EmptyState
             title="Panel de propietario"
             copy="Los favoritos son para estudiantes. Ve a tu panel para gestionar tus alojamientos."
@@ -79,7 +79,7 @@ export default function FavoritesPage() {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8">
         <p className="text-sm font-semibold text-primary">Estudiante</p>
         <h1 className="mt-2 text-3xl font-bold">Mis favoritos</h1>
         <p className="mt-2 text-sm text-muted-foreground">Guarda los espacios que quieres comparar después.</p>
@@ -103,7 +103,7 @@ export default function FavoritesPage() {
               </button>
             </div>
           ) : favorites.length > 0 ? (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {favorites.map(fav => {
                 const listing = fav.listing
                 

@@ -131,7 +131,7 @@ export default function VisitsPage() {
       <AppHeader />
       <main>
         <section className="border-b border-border bg-card">
-          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8">
             <nav className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <Link href="/buscar" className="flex items-center gap-1 hover:text-foreground">
                 <UserRound size={14} /> Inicio
@@ -183,7 +183,7 @@ export default function VisitsPage() {
           </div>
         </section>
 
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
             <section className="space-y-5 lg:col-span-8">
               {loading ? (

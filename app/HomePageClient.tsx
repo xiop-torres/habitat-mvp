@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
+import HeroMap from '@/components/HeroMap'
 import {
   ArrowRight,
   Menu,
@@ -19,6 +20,8 @@ import {
   ChefHat,
   Bath,
   GraduationCap,
+  ChevronDown,
+  Users,
 } from 'lucide-react'
 import { BrandLogo } from '@/components/BrandLogo'
 import { Button, PrimaryButton } from '@/components/ui/button'
@@ -93,60 +96,184 @@ const amenityIcon = (text: string) => {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function HomePageClient() {
+export default function HomePageClient({ initialListings = [] }: { initialListings?: any[] }) {
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
   const [city, setCity] = useState('Arequipa')
   const [university, setUniversity] = useState('')
-  const [price, setPrice] = useState('800')
+  const [price, setPrice] = useState('')
+  const [isMobile, setIsMobile] = useState(false)
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  // Detect mobile once on mount — avoids SSR mismatch
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Detect scroll to toggle dynamic navbar style smoothly
+  useEffect(() => {
+    function handleScroll() {
+      setIsScrolled(window.scrollY > 40)
+    }
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   function handleSearch(event: FormEvent) {
     event.preventDefault()
     const params = new URLSearchParams()
     if (city) params.set('ciudad', city)
     if (university) params.set('universidad', university)
-    if (price) params.set('precio_maximo', price)
+    if (price && Number(price) > 0) params.set('precio_maximo', price)
     const query = params.toString() ? `?${params.toString()}` : ''
     router.push(`/buscar${query}`)
   }
 
+  const validListingCount = initialListings.filter((l) => l.lat != null && l.lng != null).length
+
   return (
     <div className="min-h-screen bg-[#FEFDF8] text-[#18181B] flex flex-col">
 
-      {/* ── Header ── */}
-      <header className="sticky top-0 z-50 border-b border-[#E4E4E7] bg-[#FEFDF8]/90 backdrop-blur-md">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-4 px-5 sm:px-6 lg:px-8">
-          <BrandLogo compact />
-          <nav className="hidden items-center gap-7 text-sm font-semibold text-[#71717A] lg:flex">
-            <Link href="/buscar" className="transition hover:text-[#18181B]">Buscar</Link>
-            <Link href="#universidades" className="transition hover:text-[#18181B]">Universidades</Link>
-            <Link href="#como-funciona" className="transition hover:text-[#18181B]">Cómo funciona</Link>
-            <Link href="/propietario" className="transition hover:text-[#18181B]">Para propietarios</Link>
-            <Link href="/favoritos" className="inline-flex items-center gap-1.5 transition hover:text-[#18181B]">
-              <Heart size={16} /> Favoritos
+      {/* ── Navbar Dinámico con transición al hacer scroll ── */}
+      <header
+        className={cn(
+          'sticky top-0 z-40 transition-all duration-300',
+          isScrolled
+            ? 'bg-[#FACC15] border-b border-[#EAB308] shadow-[0_4px_20px_rgba(234,179,8,0.22)]'
+            : 'bg-[#FEFDF8]/95 backdrop-blur-md border-b border-[#E4E4E7] shadow-[0_1px_3px_rgba(0,0,0,0.02)]'
+        )}
+      >
+        <div className="mx-auto flex h-16 max-w-[1600px] w-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 xl:px-10">
+          <BrandLogo
+            compact
+            variant={isScrolled ? 'white' : 'default'}
+            className={cn('transition-all duration-300', isScrolled ? 'drop-shadow-sm' : '')}
+          />
+          
+          <nav className="hidden items-center gap-7 text-sm font-bold lg:flex">
+            <Link
+              href="/buscar"
+              className={cn(
+                'transition-colors duration-300',
+                isScrolled ? 'text-[#18181B] hover:text-black/70' : 'text-[#71717A] hover:text-[#18181B]'
+              )}
+            >
+              Buscar
+            </Link>
+            <Link
+              href="#universidades"
+              className={cn(
+                'transition-colors duration-300',
+                isScrolled ? 'text-[#18181B] hover:text-black/70' : 'text-[#71717A] hover:text-[#18181B]'
+              )}
+            >
+              Universidades
+            </Link>
+            <Link
+              href="#como-funciona"
+              className={cn(
+                'transition-colors duration-300',
+                isScrolled ? 'text-[#18181B] hover:text-black/70' : 'text-[#71717A] hover:text-[#18181B]'
+              )}
+            >
+              Cómo funciona
+            </Link>
+            <Link
+              href="/propietario"
+              className={cn(
+                'transition-colors duration-300',
+                isScrolled ? 'text-[#18181B] hover:text-black/70' : 'text-[#71717A] hover:text-[#18181B]'
+              )}
+            >
+              Para propietarios
+            </Link>
+            <Link
+              href="/favoritos"
+              className={cn(
+                'inline-flex items-center gap-1.5 transition-colors duration-300',
+                isScrolled ? 'text-[#18181B] hover:text-black/70' : 'text-[#71717A] hover:text-[#18181B]'
+              )}
+            >
+              <Heart size={15} /> Favoritos
             </Link>
           </nav>
-          <div className="hidden items-center gap-3 lg:flex">
-            <Link href="/login" className="px-3 py-2 text-sm font-semibold text-[#18181B] transition hover:text-[#71717A]">
+
+          <div className="hidden items-center gap-3 sm:flex">
+            <Link
+              href="/login"
+              className={cn(
+                'px-3.5 py-2 text-sm font-bold transition-colors duration-300',
+                isScrolled ? 'text-[#18181B] hover:text-black/70' : 'text-[#18181B] hover:text-[#71717A]'
+              )}
+            >
               Iniciar sesión
             </Link>
-            <Link href="/registro/propietario" className="inline-flex h-11 items-center justify-center rounded-xl bg-[#FACC15] px-5 text-sm font-bold text-[#18181B] transition hover:bg-[#EAB308]">
+            <Link
+              href="/registro/propietario"
+              className={cn(
+                'inline-flex h-10 items-center justify-center rounded-xl px-4.5 text-sm font-black shadow-sm transition-all duration-300 active:scale-95',
+                isScrolled
+                  ? 'bg-[#18181B] text-white hover:bg-black hover:shadow-md'
+                  : 'bg-[#FACC15] text-[#18181B] hover:bg-[#EAB308]'
+              )}
+            >
               Publicar alojamiento
             </Link>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setMenuOpen(!menuOpen)} className="lg:hidden">
+
+          <button
+            type="button"
+            aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            onClick={() => setMenuOpen(!menuOpen)}
+            className={cn(
+              'grid size-10 place-items-center rounded-xl border transition-all duration-300 lg:hidden',
+              isScrolled
+                ? 'border-[#18181B]/20 bg-[#18181B] text-white hover:bg-black'
+                : 'border-[#E4E4E7] bg-white text-[#18181B] hover:bg-zinc-50'
+            )}
+          >
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
-          </Button>
+          </button>
         </div>
+
+        {/* Menú móvil desplegable */}
         {menuOpen && (
-          <div className="border-t border-[#E4E4E7] bg-[#FEFDF8] px-5 py-4 lg:hidden">
-            <nav className="grid gap-3 text-sm font-semibold text-[#18181B]">
-              <Link href="/buscar" onClick={() => setMenuOpen(false)}>Buscar alojamiento</Link>
-              <Link href="#universidades" onClick={() => setMenuOpen(false)}>Universidades</Link>
-              <Link href="#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</Link>
-              <Link href="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
+          <div
+            className={cn(
+              'border-t px-5 py-4 lg:hidden animate-in fade-in slide-in-from-top-2 transition-colors duration-300',
+              isScrolled
+                ? 'border-[#EAB308] bg-[#FACC15] text-[#18181B]'
+                : 'border-[#E4E4E7] bg-[#FEFDF8] text-[#18181B]'
+            )}
+          >
+            <nav className="grid gap-3 text-sm font-bold">
+              <Link href="/buscar" onClick={() => setMenuOpen(false)} className="py-1">Buscar</Link>
+              <Link href="#universidades" onClick={() => setMenuOpen(false)} className="py-1">Universidades</Link>
+              <Link href="#como-funciona" onClick={() => setMenuOpen(false)} className="py-1">Cómo funciona</Link>
+              <Link href="/propietario" onClick={() => setMenuOpen(false)} className="py-1">Para propietarios</Link>
+              <Link href="/favoritos" onClick={() => setMenuOpen(false)} className="py-1 flex items-center gap-2">
+                <Heart size={15} /> Favoritos
+              </Link>
+              <Link
+                href="/login"
+                onClick={() => setMenuOpen(false)}
+                className={cn('py-1 border-t pt-2', isScrolled ? 'border-[#EAB308]' : 'border-[#E4E4E7]')}
+              >
+                Iniciar sesión
+              </Link>
             </nav>
-            <Link href="/registro/propietario" className="mt-4 inline-flex w-full justify-center rounded-xl bg-[#FACC15] px-4 py-3 text-sm font-bold text-[#18181B]">
+            <Link
+              href="/registro/propietario"
+              onClick={() => setMenuOpen(false)}
+              className={cn(
+                'mt-4 inline-flex w-full justify-center rounded-xl px-4 py-3 text-sm font-black shadow-sm transition-colors duration-300',
+                isScrolled ? 'bg-[#18181B] text-white hover:bg-black' : 'bg-[#FACC15] text-[#18181B] hover:bg-[#EAB308]'
+              )}
+            >
               Publicar alojamiento
             </Link>
           </div>
@@ -155,112 +282,144 @@ export default function HomePageClient() {
 
       <main className="flex-1 flex flex-col">
 
-        {/* ── Hero ── */}
-        <section className="relative w-full overflow-hidden flex flex-col items-center pt-12 sm:pt-16 pb-[280px] sm:pb-[340px] lg:pb-[420px] px-5 sm:px-6 bg-[#FEFDF8]">
-          {/* Map background image */}
-          <div className="absolute inset-0 z-0 pointer-events-none">
-            <Image
-              src="/mapa-background.png"
-              alt="Mapa de alojamientos en Arequipa"
-              fill
-              className="object-cover object-center opacity-90"
-              priority
-              sizes="100vw"
+        {/* ── Hero Principal (Mapa a Pantalla Completa: calc(100dvh - 4rem)) ── */}
+        <section className="relative w-full h-[calc(100dvh-4rem)] min-h-[580px] max-h-[920px] overflow-hidden flex flex-col justify-between">
+          
+          {/* Mapa de fondo 100% interactivo */}
+          <div className="absolute inset-0 z-0">
+            <HeroMap
+              listings={initialListings}
+              selectedUni={university}
+              onUniSelect={(v) => setUniversity(v)}
+              isMobile={isMobile}
             />
-            <div className="absolute inset-0 bg-white/15" />
+            {/* Gradiente sutil superior para legibilidad óptima de textos */}
+            <div className="absolute inset-x-0 top-0 h-80 sm:h-96 bg-gradient-to-b from-[#FEFDF8]/90 via-[#FEFDF8]/35 to-transparent pointer-events-none" />
           </div>
 
-          {/* Content */}
-          <div className="relative z-10 w-full max-w-[960px] mx-auto flex flex-col items-center text-center animate-in fade-in duration-700">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#E4E4E7] bg-white/90 backdrop-blur-sm px-3.5 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[#18181B] shadow-sm mb-5 sm:mb-6">
-              <MapPin size={12} className="text-[#EAB308]" /> Cerca de tu universidad
+          {/* Bloque central superpuesto flotante */}
+          <div className="relative z-10 w-full max-w-[1040px] mx-auto px-4 sm:px-6 pt-6 sm:pt-10 flex flex-col items-center text-center pointer-events-none">
+            <div className="pointer-events-auto flex flex-col items-center w-full">
+              
+              {/* Badge */}
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-[#E4E4E7] bg-white/95 backdrop-blur-sm px-3.5 py-1 text-[11px] font-extrabold uppercase tracking-widest text-[#18181B] shadow-sm mb-3 sm:mb-4">
+                <MapPin size={13} className="text-[#EAB308]" /> CERCA DE TU UNIVERSIDAD
+              </div>
+
+              {/* Título */}
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[54px] font-extrabold tracking-tight text-[#18181B] leading-[1.08] max-w-2xl">
+                Encuentra tu lugar ideal<br />
+                en <span className="text-[#EAB308]">Arequipa</span>
+              </h1>
+
+              {/* Subtítulo */}
+              <p className="mt-3 max-w-xl text-xs sm:text-sm md:text-[15px] leading-relaxed text-[#52525B]">
+                Habitaciones, viviendas y departamentos pensados para estudiantes,<br className="hidden sm:inline" />
+                con información clara y a pocos minutos de tu campus.
+              </p>
+
+              {/* Buscador Funcional Tipo Cápsula Flotante */}
+              <form
+                onSubmit={handleSearch}
+                className="mt-6 sm:mt-8 w-full max-w-[960px] rounded-[24px] border border-[#E4E4E7] bg-white shadow-[0_12px_36px_rgba(24,24,27,0.12)] p-2 transition-all hover:shadow-[0_16px_44px_rgba(24,24,27,0.16)]"
+              >
+                <div className="flex flex-col sm:flex-row items-stretch divide-y sm:divide-y-0 sm:divide-x divide-[#E4E4E7] gap-0">
+                  
+                  {/* Ciudad */}
+                  <div className="flex flex-1 items-center gap-2.5 px-4 py-2.5 sm:py-2">
+                    <MapPin size={18} className="text-[#EAB308] shrink-0" />
+                    <div className="flex flex-col text-left min-w-0">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#71717A]">CIUDAD</span>
+                      <span className="text-sm font-bold text-[#18181B]">Arequipa</span>
+                    </div>
+                  </div>
+
+                  {/* Universidad */}
+                  <label className="flex flex-[1.4] items-center gap-2.5 px-4 py-2.5 sm:py-2 hover:bg-zinc-50 rounded-xl transition-colors cursor-pointer group">
+                    <GraduationCap size={18} className="text-[#EAB308] shrink-0 group-hover:text-[#18181B] transition-colors" />
+                    <div className="flex flex-col text-left flex-1 min-w-0">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#71717A]">UNIVERSIDAD</span>
+                      <select
+                        aria-label="Universidad"
+                        value={university}
+                        onChange={(e) => setUniversity(e.target.value)}
+                        className="w-full bg-transparent text-sm font-bold text-[#18181B] outline-none border-0 p-0 cursor-pointer appearance-none truncate"
+                      >
+                        <option value="">Todas las universidades</option>
+                        <option value="UNSA">UNSA · San Agustín</option>
+                        <option value="UCSM">UCSM · Santa María</option>
+                        <option value="Universidad Católica San Pablo">UCSP · San Pablo</option>
+                        <option value="UTP">UTP · Tecnológica del Perú</option>
+                      </select>
+                    </div>
+                    <ChevronDown size={14} className="text-[#71717A] shrink-0" />
+                  </label>
+
+                  {/* Precio Máximo */}
+                  <label className="flex flex-1 items-center gap-2.5 px-4 py-2.5 sm:py-2 hover:bg-zinc-50 rounded-xl transition-colors cursor-pointer group">
+                    <span className="font-extrabold text-[#EAB308] text-sm shrink-0">S/</span>
+                    <div className="flex flex-col text-left flex-1 min-w-0">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#71717A]">MÁX. PRECIO</span>
+                      <select
+                        aria-label="Precio máximo mensual"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className="w-full bg-transparent text-sm font-bold text-[#18181B] outline-none border-0 p-0 cursor-pointer appearance-none truncate"
+                      >
+                        <option value="">Cualquier precio</option>
+                        <option value="500">Hasta S/ 500</option>
+                        <option value="700">Hasta S/ 700</option>
+                        <option value="900">Hasta S/ 900</option>
+                        <option value="1200">Hasta S/ 1,200</option>
+                        <option value="1500">Hasta S/ 1,500</option>
+                        <option value="2000">Hasta S/ 2,000</option>
+                      </select>
+                    </div>
+                    <ChevronDown size={14} className="text-[#71717A] shrink-0" />
+                  </label>
+
+                  {/* Botón Buscar */}
+                  <div className="p-1 sm:p-0 sm:pl-2 shrink-0 flex items-center">
+                    <button
+                      type="submit"
+                      className="h-11 sm:h-12 w-full sm:w-auto px-6 rounded-xl bg-[#FACC15] hover:bg-[#EAB308] text-[#18181B] font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+                    >
+                      <Search size={16} />
+                      <span>Buscar alojamientos</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          {/* Píldoras flotantes inferiores sobre el mapa */}
+          <div className="relative z-10 w-full px-5 pb-5 flex items-center justify-between gap-3 pointer-events-none">
+            {/* Píldora izquierda: Conteo de alojamientos */}
+            <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-[#E4E4E7] bg-white/95 backdrop-blur-sm px-3.5 py-1.5 text-xs font-bold text-[#18181B] shadow-md ml-14 sm:ml-16">
+              <span className="size-2.5 rounded-full bg-[#FACC15] shadow-sm" />
+              <span>
+                {validListingCount > 0
+                  ? `${validListingCount} ${validListingCount === 1 ? 'alojamiento en el mapa' : 'alojamientos en el mapa'}`
+                  : 'Explora alojamientos en el mapa'}
+              </span>
             </div>
 
-            <h1 className="max-w-3xl text-[36px] sm:text-[48px] lg:text-[54px] font-extrabold tracking-tight text-[#18181B] leading-[1.08]">
-              Encuentra tu lugar ideal<br />
-              en <span className="text-[#FACC15]">Arequipa</span>
-            </h1>
-
-            <p className="mt-4 max-w-xl text-[15px] sm:text-[17px] leading-relaxed text-[#52525B]">
-              Habitaciones, viviendas y departamentos pensados para estudiantes,<br className="hidden sm:block" />
-              con información clara y a pocos minutos de tu campus.
-            </p>
-
-            {/* Search bar */}
-            <form
-              onSubmit={handleSearch}
-              className="mt-8 sm:mt-10 w-full max-w-[920px] rounded-[20px] border border-[#E4E4E7] bg-white shadow-[0_8px_32px_rgba(24,24,27,0.07)] transition-all hover:shadow-[0_12px_40px_rgba(24,24,27,0.10)] hover:-translate-y-0.5 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150"
-            >
-              <div className="flex flex-col sm:flex-row items-stretch divide-y sm:divide-y-0 sm:divide-x divide-[#E4E4E7] p-2 gap-0">
-
-                {/* Ciudad */}
-                <label className="flex flex-1 flex-col justify-center rounded-[14px] hover:bg-zinc-50 px-4 py-3 transition cursor-pointer group min-w-0">
-                  <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#71717A]">CIUDAD</span>
-                  <select
-                    aria-label="Ciudad"
-                    value={city}
-                    onChange={e => setCity(e.target.value)}
-                    className="mt-0.5 w-full bg-transparent text-[15px] font-semibold text-[#18181B] outline-none border-0 focus:ring-0 cursor-pointer p-0 appearance-none"
-                  >
-                    <option value="Arequipa">Arequipa</option>
-                  </select>
-                </label>
-
-                {/* Universidad */}
-                <label className="flex flex-[1.5] flex-col justify-center rounded-[14px] hover:bg-zinc-50 px-4 py-3 transition cursor-pointer group min-w-0">
-                  <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#71717A]">UNIVERSIDAD</span>
-                  <select
-                    aria-label="Universidad"
-                    value={university}
-                    onChange={e => setUniversity(e.target.value)}
-                    className="mt-0.5 w-full bg-transparent text-[15px] font-semibold text-[#18181B] outline-none border-0 focus:ring-0 cursor-pointer p-0 appearance-none"
-                  >
-                    <option value="">Selecciona tu universidad</option>
-                    <option value="UNSA">UNSA</option>
-                    <option value="UCSM">UCSM</option>
-                    <option value="Universidad Católica San Pablo">UCSP</option>
-                    <option value="UTP">UTP</option>
-                  </select>
-                </label>
-
-                {/* Precio */}
-                <label className="flex flex-1 flex-col justify-center rounded-[14px] hover:bg-zinc-50 px-4 py-3 transition cursor-pointer group min-w-0">
-                  <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#71717A]">MÁX. PRECIO</span>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="text-[15px] font-semibold text-[#71717A]">S/</span>
-                    <select
-                      aria-label="Precio máximo"
-                      value={price}
-                      onChange={e => setPrice(e.target.value)}
-                      className="w-full bg-transparent text-[15px] font-semibold text-[#18181B] outline-none border-0 focus:ring-0 cursor-pointer p-0 appearance-none"
-                    >
-                      <option value="600">600</option>
-                      <option value="800">800</option>
-                      <option value="1000">1000</option>
-                      <option value="1200">1200</option>
-                      <option value="1500">1500</option>
-                    </select>
-                  </div>
-                </label>
-
-                {/* Button */}
-                <div className="p-2 shrink-0 w-full sm:w-auto flex">
-                  <PrimaryButton
-                    type="submit"
-                    className="h-[52px] w-full sm:w-auto sm:px-7 rounded-[14px] text-[14px] font-black bg-[#FACC15] hover:bg-[#EAB308] text-[#18181B] shadow-none transition-colors gap-2"
-                  >
-                    <Search size={17} />
-                    Buscar alojamientos
-                  </PrimaryButton>
-                </div>
-              </div>
-            </form>
+            {/* Píldora derecha: Leyenda */}
+            <div className="pointer-events-auto hidden sm:inline-flex items-center gap-3 rounded-full border border-[#E4E4E7] bg-white/95 backdrop-blur-sm px-4 py-1.5 text-xs font-bold text-[#52525B] shadow-md">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2.5 rounded-full bg-[#FACC15]" /> Alojamientos
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2.5 rounded-full bg-[#18181B]" /> Universidades
+              </span>
+            </div>
           </div>
         </section>
 
         {/* ── Universidades ── */}
-        <section id="universidades" className="bg-[#FEFDF8] py-20 sm:py-24 lg:py-28 px-5 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
+        <section id="universidades" className="bg-[#FEFDF8] py-20 sm:py-24 lg:py-28 px-4 sm:px-6 lg:px-8 xl:px-10">
+          <div className="mx-auto max-w-[1600px] w-full">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-10 sm:mb-12">
               <div>
                 <p className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-[#EAB308] mb-2">Cerca de tu universidad</p>
@@ -303,8 +462,8 @@ export default function HomePageClient() {
         </section>
 
         {/* ── Alojamientos destacados ── */}
-        <section className="bg-white border-y border-[#E4E4E7] py-20 sm:py-24 lg:py-28 px-5 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
+        <section className="bg-white border-y border-[#E4E4E7] py-20 sm:py-24 lg:py-28 px-4 sm:px-6 lg:px-8 xl:px-10">
+          <div className="mx-auto max-w-[1600px] w-full">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-10 sm:mb-12">
               <div>
                 <p className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-[#EAB308] mb-2">Alojamientos destacados</p>
@@ -363,8 +522,8 @@ export default function HomePageClient() {
         </section>
 
         {/* ── Cómo funciona ── */}
-        <section id="como-funciona" className="bg-[#FEFDF8] py-20 sm:py-24 lg:py-28 px-5 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
+        <section id="como-funciona" className="bg-[#FEFDF8] py-20 sm:py-24 lg:py-28 px-4 sm:px-6 lg:px-8 xl:px-10">
+          <div className="mx-auto max-w-[1600px] w-full">
             <div className="grid gap-14 lg:gap-20 lg:grid-cols-2 lg:items-center">
               {/* Left: steps */}
               <div>
@@ -427,8 +586,8 @@ export default function HomePageClient() {
         </section>
 
         {/* ── Beneficios ── */}
-        <section className="bg-white border-y border-[#E4E4E7] py-14 sm:py-16 px-5 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
+        <section className="bg-white border-y border-[#E4E4E7] py-14 sm:py-16 px-4 sm:px-6 lg:px-8 xl:px-10">
+          <div className="mx-auto max-w-[1600px] w-full">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 lg:gap-6 lg:divide-x divide-[#E4E4E7]">
               {[
                 { title: 'Verificación simple', text: 'Publicaciones más seguras', icon: ShieldCheck },
@@ -450,39 +609,126 @@ export default function HomePageClient() {
           </div>
         </section>
 
-        {/* ── CTA Propietarios ── */}
-        <section className="py-20 sm:py-24 lg:py-28 px-5 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            <div className="relative overflow-hidden rounded-[28px] bg-[#18181B] shadow-2xl">
-              <div className="grid lg:grid-cols-2 items-center gap-0">
-                {/* Text */}
-                <div className="relative z-10 px-8 py-12 sm:px-12 sm:py-14 lg:py-16 lg:pl-16 lg:pr-12">
-                  <div className="inline-flex items-center justify-center size-12 rounded-2xl bg-[#FACC15]/15 mb-6">
-                    <HomeIcon size={22} className="text-[#FACC15]" />
+        {/* ── CTA Propietarios (Diseño fiel a imagen de inspiración) ── */}
+        <section className="py-20 sm:py-24 lg:py-28 px-4 sm:px-6 lg:px-8 xl:px-10">
+          <div className="mx-auto max-w-[1600px] w-full">
+            <div className="relative overflow-hidden rounded-[28px] sm:rounded-[36px] bg-[#111113] shadow-2xl border border-white/5">
+              
+              {/* Acento curvo amarillo en esquina inferior izquierda */}
+              <svg
+                className="absolute bottom-0 left-0 w-28 h-28 sm:w-44 sm:h-44 text-[#FACC15] pointer-events-none z-0 select-none"
+                viewBox="0 0 160 160"
+                fill="none"
+              >
+                <path d="M0 160 L0 60 Q40 100 130 160 Z" fill="currentColor" />
+              </svg>
+
+              <div className="relative z-10 grid lg:grid-cols-12 items-stretch gap-0">
+                {/* Columna Izquierda: Contenido y Acciones */}
+                <div className="lg:col-span-7 flex flex-col justify-between px-6 py-10 sm:px-10 sm:py-14 lg:py-16 lg:pl-16 lg:pr-10">
+                  <div>
+                    {/* Badge Habitat */}
+                    <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md border border-white/10 px-3.5 py-1.5 mb-6 shadow-sm">
+                      <span className="size-5 rounded-full bg-[#FACC15] flex items-center justify-center text-[#18181B] shadow-xs">
+                        <HomeIcon size={12} strokeWidth={2.5} />
+                      </span>
+                      <span className="text-xs font-extrabold tracking-wide text-white">Habitat</span>
+                    </div>
+
+                    {/* Título Principal */}
+                    <h2 className="text-[32px] sm:text-[42px] lg:text-[46px] xl:text-[52px] font-black tracking-tight leading-[1.08] text-white">
+                      ¿Tienes un espacio<br />
+                      <span className="text-[#FACC15] inline-flex items-center">
+                        para alquilar?
+                        {/* Rayos doodle amarillos */}
+                        <svg
+                          className="ml-3 sm:ml-4 w-7 h-7 sm:w-9 sm:h-9 text-[#FACC15] shrink-0"
+                          viewBox="0 0 32 32"
+                          fill="none"
+                        >
+                          <path
+                            d="M6 14 L18 8"
+                            stroke="currentColor"
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M8 20 L22 19"
+                            stroke="currentColor"
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M7 26 L19 29"
+                            stroke="currentColor"
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </span>
+                    </h2>
+
+                    {/* Subtítulo */}
+                    <p className="mt-4 sm:mt-5 text-sm sm:text-base text-zinc-300 font-medium leading-relaxed max-w-lg">
+                      Publica tu alojamiento y conecta con estudiantes de las principales universidades de Arequipa.
+                    </p>
                   </div>
-                  <h2 className="text-[28px] sm:text-[34px] lg:text-[38px] font-extrabold text-white leading-tight mb-4">
-                    ¿Tienes un espacio<br />para alquilar?
-                  </h2>
-                  <p className="text-[15px] sm:text-[16px] text-zinc-400 leading-relaxed mb-8 max-w-md">
-                    Publica tu alojamiento y conecta con estudiantes de las principales universidades de Arequipa.
-                  </p>
-                  <Link
-                    href="/registro/propietario"
-                    className="inline-flex items-center gap-2 bg-[#FACC15] hover:bg-[#EAB308] text-[#18181B] font-extrabold text-[15px] px-7 py-3.5 rounded-[14px] transition"
-                  >
-                    Publicar alojamiento <ArrowRight size={16} />
-                  </Link>
+
+                  {/* Fila Inferior: Botón CTA + 3 Puntos Clave */}
+                  <div className="mt-8 sm:mt-10 pt-4 flex flex-col xl:flex-row xl:items-center gap-6 xl:gap-8">
+                    {/* Botón Principal */}
+                    <Link
+                      href="/registro/propietario"
+                      className="inline-flex items-center justify-center gap-2 bg-[#FACC15] hover:bg-[#EAB308] text-[#18181B] font-black text-sm sm:text-[15px] px-6 sm:px-7 py-3.5 rounded-2xl shadow-[0_4px_16px_rgba(250,204,21,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] shrink-0 w-full sm:w-auto text-center"
+                    >
+                      Publicar alojamiento <ArrowRight size={16} strokeWidth={2.5} />
+                    </Link>
+
+                    {/* 3 Badges de Características */}
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4 items-center border-t border-white/10 xl:border-t-0 xl:border-l xl:pl-6 pt-4 xl:pt-0">
+                      {/* Característica 1 */}
+                      <div className="flex items-center gap-2 sm:gap-2.5">
+                        <div className="size-8 sm:size-9 rounded-full bg-[#FACC15] flex items-center justify-center text-[#18181B] shrink-0 shadow-sm">
+                          <ShieldCheck size={16} strokeWidth={2.5} />
+                        </div>
+                        <span className="text-[11px] sm:text-xs font-bold text-white leading-tight">
+                          Seguro<br />y confiable
+                        </span>
+                      </div>
+
+                      {/* Característica 2 */}
+                      <div className="flex items-center gap-2 sm:gap-2.5">
+                        <div className="size-8 sm:size-9 rounded-full bg-[#FACC15] flex items-center justify-center text-[#18181B] shrink-0 shadow-sm">
+                          <Users size={16} strokeWidth={2.5} />
+                        </div>
+                        <span className="text-[11px] sm:text-xs font-bold text-white leading-tight">
+                          Conecta con<br />estudiantes
+                        </span>
+                      </div>
+
+                      {/* Característica 3 */}
+                      <div className="flex items-center gap-2 sm:gap-2.5">
+                        <div className="size-8 sm:size-9 rounded-full bg-[#FACC15] flex items-center justify-center text-[#18181B] shrink-0 shadow-sm">
+                          <MapPin size={16} strokeWidth={2.5} />
+                        </div>
+                        <span className="text-[11px] sm:text-xs font-bold text-white leading-tight">
+                          En todo<br />Arequipa
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                {/* Image */}
-                <div className="relative hidden lg:block h-[360px] xl:h-[420px]">
+
+                {/* Columna Derecha: Imagen public/foto-cta.png */}
+                <div className="lg:col-span-5 relative w-full h-[280px] sm:h-[360px] lg:h-auto min-h-[320px] lg:min-h-full overflow-hidden">
                   <Image
-                    src="/foto_cta.jpg"
-                    alt="Alojamiento para propietarios"
+                    src="/foto-cta.png"
+                    alt="¿Tienes un espacio para alquilar? Publica tu alojamiento en Habitat"
                     fill
-                    className="object-cover"
-                    sizes="50vw"
+                    className="object-cover object-center lg:object-left-top"
+                    sizes="(max-width: 1024px) 100vw, 42vw"
+                    priority
                   />
-                  <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-[#18181B]/30" />
                 </div>
               </div>
             </div>
@@ -492,8 +738,8 @@ export default function HomePageClient() {
       </main>
 
       {/* ── Footer ── */}
-      <footer className="bg-[#18181B] text-white px-5 sm:px-6 lg:px-8 pt-14 sm:pt-16 pb-8">
-        <div className="mx-auto max-w-7xl">
+      <footer className="bg-[#18181B] text-white px-4 sm:px-6 lg:px-8 xl:px-10 pt-14 sm:pt-16 pb-8">
+        <div className="mx-auto max-w-[1600px] w-full">
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12 sm:mb-16">
             {/* Brand */}
             <div className="col-span-2 sm:col-span-2 lg:col-span-1">

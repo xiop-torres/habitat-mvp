@@ -30,7 +30,7 @@ export default async function PublishedListingPage({
   return (
     <div className="min-h-screen bg-background">
       <AppHeader owner />
-      <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-10">
         <div className="mx-auto max-w-3xl text-center">
           <div className="mx-auto grid size-20 place-items-center rounded-full bg-primary text-foreground"><CheckCircle2 size={40} /></div>
           <p className="mt-6 text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">Publicación activa</p>

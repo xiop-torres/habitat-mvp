@@ -92,7 +92,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-[#FBF8FC] text-[#1B1B1E]">
       <AppHeader />
-      <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-7">
         <h1 className="mb-6 text-2xl font-black">Mi perfil</h1>
         <form onSubmit={handleSubmit} className="grid items-start gap-8 lg:grid-cols-12">
           

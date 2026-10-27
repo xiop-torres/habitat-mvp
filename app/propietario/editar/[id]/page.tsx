@@ -340,7 +340,7 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
     return (
       <div className="min-h-screen bg-[#FBF8FC] text-[#1B1B1E]">
         <AppHeader owner />
-        <main className="mx-auto flex max-w-7xl justify-center px-4 py-16 sm:px-6 lg:px-8">
+        <main className="mx-auto flex max-w-[1600px] w-full justify-center px-4 py-16 sm:px-6 lg:px-8 xl:px-10">
           <section className="w-full max-w-xl rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm">
             <TriangleAlert className="mx-auto text-red-500" size={48} />
             <h1 className="mt-4 text-2xl font-black text-red-700">Acceso denegado</h1>
@@ -362,7 +362,7 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
     return (
       <div className="min-h-screen bg-[#FBF8FC]">
         <AppHeader owner />
-        <main className="mx-auto flex max-w-7xl justify-center px-4 py-16 sm:px-6 lg:px-8">
+        <main className="mx-auto flex max-w-[1600px] w-full justify-center px-4 py-16 sm:px-6 lg:px-8 xl:px-10">
           <section className="w-full max-w-xl rounded-3xl border border-[#E4E1E6] bg-white p-8 text-center shadow-sm">
             <div className="mx-auto grid size-20 place-items-center rounded-full bg-[#FACC15]">
               <CheckCircle2 size={40} />
@@ -393,7 +393,7 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
       <AppHeader owner />
       <main className="pt-5">
         <section className="border-b border-[#E4E1E6] bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-[#554336]">
               <Link href="/propietario" className="hover:text-[#8D4B00]">Panel de Propietario</Link>
               <span>›</span>
@@ -431,7 +431,7 @@ export default function EditListing({ params }: { params: Promise<{ id: string }
           </div>
         </section>
 
-        <form id="edit-listing" onSubmit={saveChanges} className="mx-auto grid max-w-7xl items-start gap-6 px-4 py-6 sm:px-6 lg:grid-cols-12 lg:px-8 lg:py-8">
+        <form id="edit-listing" onSubmit={saveChanges} className="mx-auto grid max-w-[1600px] w-full items-start gap-6 px-4 py-6 sm:px-6 lg:grid-cols-12 lg:px-8 xl:px-10 lg:py-8">
           <div className="space-y-6 lg:col-span-8">
             <nav className="sticky top-16 z-20 flex gap-1 overflow-x-auto rounded-xl bg-[#FBF8FC]/95 p-1.5 shadow-sm backdrop-blur">
               <a href="#basicos" className="whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs font-black text-[#8D4B00] shadow-sm">1. Básica y precio</a>

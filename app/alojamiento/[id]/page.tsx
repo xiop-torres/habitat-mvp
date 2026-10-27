@@ -89,7 +89,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
     return (
       <div className="min-h-screen bg-[#FEFDF8] text-[#18181B]">
         <AppHeader />
-        <main className="mx-auto max-w-7xl px-4 py-20 text-center sm:px-6 lg:px-8">
+        <main className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-20 text-center">
           <TriangleAlert className="mx-auto text-[#EAB308]" size={48} />
           <h1 className="mt-6 text-3xl font-black">Alojamiento no disponible</h1>
           <p className="mt-3 text-sm text-[#71717A]">
@@ -133,7 +133,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
   return (
     <div className="min-h-screen bg-[#FEFDF8] text-[#18181B] lg:pb-0">
       <AppHeader />
-      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-5">
 
         {/* Breadcrumb + actions */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-5">
@@ -212,7 +212,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
             </div>
           )}
           
-          <div className="h-[300px] sm:h-[420px] md:h-[500px]">
+          <div className="h-[320px] sm:h-[440px] md:h-[520px] lg:h-[560px]">
             {galleryImages.length === 0 && (
               <div className="flex h-full w-full items-center justify-center rounded-xl bg-zinc-100 text-zinc-400">
                 Sin foto principal
@@ -272,7 +272,7 @@ export default function PropertyDetail({ params }: { params: Promise<{ id: strin
         </section>
 
         {/* Body */}
-        <div className="grid items-start gap-9 lg:grid-cols-12">
+        <div className="grid items-start gap-8 xl:gap-10 lg:grid-cols-12">
           <div className="space-y-7 lg:col-span-8">
 
             {/* Key specs */}

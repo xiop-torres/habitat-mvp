@@ -89,7 +89,7 @@ export default function OwnerRegistration() {
   return (
     <div className="min-h-screen bg-secondary/35 text-foreground">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex min-h-20 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-20 max-w-[1600px] w-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 xl:px-10">
           <BrandLogo />
           <nav className="hidden items-center gap-8 text-sm font-bold text-muted-foreground md:flex">
             <Link href="/propietario" className="hover:text-foreground">Beneficios Propietarios</Link>
@@ -103,7 +103,7 @@ export default function OwnerRegistration() {
         </div>
       </header>
 
-      <main className="mx-auto grid min-h-[calc(100vh-160px)] max-w-7xl place-items-center px-4 py-14 sm:px-6 lg:px-8">
+      <main className="mx-auto grid min-h-[calc(100vh-160px)] max-w-[1600px] w-full place-items-center px-4 py-14 sm:px-6 lg:px-8 xl:px-10">
         <section className="w-full max-w-[540px] overflow-hidden rounded-3xl border border-border bg-card shadow-xl shadow-foreground/5">
           <div className="flex items-center justify-between gap-4 border-b border-border bg-background px-8 py-6">
             <div className="flex min-w-0 items-center gap-3">
@@ -243,7 +243,7 @@ export default function OwnerRegistration() {
       </main>
 
       <footer className="border-t border-border bg-card">
-        <div className="mx-auto flex min-h-14 max-w-7xl flex-col justify-between gap-3 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-14 max-w-[1600px] w-full flex-col justify-between gap-3 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:px-6 lg:px-8 xl:px-10">
           <p>© 2026 Habitat Perú. Plataforma para arrendadores verificados.</p>
           <div className="flex gap-5">
             <Link href="/propietario/publicado">Garantía anti-morosidad</Link>

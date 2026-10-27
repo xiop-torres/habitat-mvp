@@ -171,7 +171,7 @@ export default function OwnerCalendarPage() {
       <AppHeader owner />
       <main className="pt-5 pb-16">
         <div className="border-b border-[#E4E1E6] bg-white">
-          <div className="mx-auto flex max-w-7xl flex-col justify-between gap-3 px-4 py-3 text-xs text-[#554336] sm:px-6 lg:flex-row lg:items-center lg:px-8">
+          <div className="mx-auto flex max-w-[1600px] w-full flex-col justify-between gap-3 px-4 py-3 text-xs text-[#554336] sm:px-6 lg:flex-row lg:items-center lg:px-8 xl:px-10">
             <div className="flex flex-wrap items-center gap-2">
               <span>Inicio</span>
               <span>•</span>
@@ -182,7 +182,7 @@ export default function OwnerCalendarPage() {
           </div>
         </div>
         
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
           <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
             <div>
               <h1 className="text-3xl font-black tracking-tight sm:text-4xl">

@@ -67,7 +67,7 @@ export function AppHeader({ owner = false }: { owner?: boolean }) {
   return (
     <>
       <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-16 max-w-[1600px] w-full items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 xl:px-10">
           <BrandLogo compact />
           
           {/* Desktop Nav */}
@@ -168,7 +168,7 @@ export function AppHeader({ owner = false }: { owner?: boolean }) {
 }
 
 export function Footer() {
-  return <footer className="mt-16 border-t border-border bg-secondary/50"><div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-4 lg:px-8"><div><BrandLogo compact /><p className="mt-3 text-sm leading-6 text-muted-foreground">Tu espacio, más cerca. Encuentra alojamiento cerca de tu universidad.</p></div><div><h2 className="text-sm font-bold">Descubre</h2><div className="mt-3 grid gap-2 text-sm text-muted-foreground"><Link href="/buscar">Buscar alojamiento</Link><Link href="/">Cómo funciona</Link></div></div><div><h2 className="text-sm font-bold">Propietarios</h2><div className="mt-3 grid gap-2 text-sm text-muted-foreground"><Link href="/propietario/nuevo">Publicar alojamiento</Link><Link href="/propietario">Mi panel</Link></div></div><div><h2 className="text-sm font-bold">Contacto</h2><p className="mt-3 text-sm text-muted-foreground">Arequipa, Perú<br />hola@habitat.pe</p></div></div><p className="border-t border-border px-5 py-5 text-center text-xs text-muted-foreground">© 2026 Habitat. Hecho para estudiantes.</p></footer>
+  return <footer className="mt-16 border-t border-border bg-secondary/50"><div className="mx-auto grid max-w-[1600px] w-full gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-4 lg:px-8 xl:px-10"><div><BrandLogo compact /><p className="mt-3 text-sm leading-6 text-muted-foreground">Tu espacio, más cerca. Encuentra alojamiento cerca de tu universidad.</p></div><div><h2 className="text-sm font-bold">Descubre</h2><div className="mt-3 grid gap-2 text-sm text-muted-foreground"><Link href="/buscar">Buscar alojamiento</Link><Link href="/">Cómo funciona</Link></div></div><div><h2 className="text-sm font-bold">Propietarios</h2><div className="mt-3 grid gap-2 text-sm text-muted-foreground"><Link href="/propietario/nuevo">Publicar alojamiento</Link><Link href="/propietario">Mi panel</Link></div></div><div><h2 className="text-sm font-bold">Contacto</h2><p className="mt-3 text-sm text-muted-foreground">Arequipa, Perú<br />hola@habitat.pe</p></div></div><p className="border-t border-border px-5 py-5 text-center text-xs text-muted-foreground">© 2026 Habitat. Hecho para estudiantes.</p></footer>
 }
 
 export function EmptyState({ icon = '♡', title, copy, action, href }: { icon?: string; title: string; copy: string; action: string; href: string }) {

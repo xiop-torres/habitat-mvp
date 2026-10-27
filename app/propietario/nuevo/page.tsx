@@ -329,7 +329,7 @@ export default function NewPropertyPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader owner />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1600px] w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
         <div className="flex items-center justify-between gap-4">
           <Link href="/propietario" className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground">
             <ArrowLeft size={16} />

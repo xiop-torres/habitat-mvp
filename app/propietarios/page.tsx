@@ -7,7 +7,7 @@ export default function Owners() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-5 lg:px-8">
+        <div className="mx-auto flex min-h-16 max-w-[1600px] w-full items-center justify-between gap-3 px-5 lg:px-8 xl:px-10">
           <BrandLogo compact />
           <div className="flex items-center gap-2">
             <Link href="/" className="hidden rounded-xl px-4 py-2 text-sm font-semibold hover:bg-secondary sm:inline-flex">Volver al inicio</Link>
@@ -17,7 +17,7 @@ export default function Owners() {
       </header>
 
       <main>
-        <section className="mx-auto grid max-w-7xl gap-10 px-5 py-16 lg:grid-cols-[1fr_420px] lg:px-8 lg:py-24">
+        <section className="mx-auto grid max-w-[1600px] w-full gap-10 px-5 py-16 lg:grid-cols-[1fr_420px] lg:px-8 xl:px-10 lg:py-24">
           <div className="max-w-2xl">
             <p className="text-sm font-black text-primary">Para propietarios</p>
             <h1 className="mt-4 text-4xl font-black tracking-tight sm:text-5xl">Publica tu alojamiento y llega a estudiantes que buscan dónde vivir.</h1>
@@ -38,7 +38,7 @@ export default function Owners() {
           </aside>
         </section>
 
-        <section className="mx-auto grid max-w-7xl gap-5 px-5 pb-16 sm:grid-cols-3 lg:px-8">
+        <section className="mx-auto grid max-w-[1600px] w-full gap-5 px-5 pb-16 sm:grid-cols-3 lg:px-8 xl:px-10">
           {[
             ['Público específico', 'Llega a estudiantes que buscan cerca de su universidad.', Users],
             ['Publicación organizada', 'Muestra precio, servicios, fotos y ubicación con claridad.', Eye],

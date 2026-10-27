@@ -8,9 +8,11 @@ export const dynamic = 'force-dynamic'
 export default async function ListingsPage({
   initialCity = 'Arequipa',
   initialUniversity = '',
+  initialMaxPrice,
 }: {
   initialCity?: string
   initialUniversity?: string
+  initialMaxPrice?: number
 }) {
   const supabase = await createSupabaseServerClient()
   const { data, error } = await supabase
@@ -57,6 +59,7 @@ export default async function ListingsPage({
     <ListingsClient
       initialCity={initialCity}
       initialUniversity={initialUniversity}
+      initialMaxPrice={initialMaxPrice}
       initialListings={sanitizedListings}
     />
   )
