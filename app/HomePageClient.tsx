@@ -609,10 +609,10 @@ export default function HomePageClient({ initialListings = [] }: { initialListin
           </div>
         </section>
 
-        {/* ── CTA Propietarios (Diseño fiel a imagen de inspiración) ── */}
+        {/* ── CTA Propietarios (Diseño fiel a imagen de inspiración, sin bordes ni outlines) ── */}
         <section className="py-20 sm:py-24 lg:py-28 px-4 sm:px-6 lg:px-8 xl:px-10">
           <div className="mx-auto max-w-[1600px] w-full">
-            <div className="relative overflow-hidden rounded-[28px] sm:rounded-[36px] bg-[#111113] shadow-2xl border border-white/5">
+            <div className="relative overflow-hidden rounded-[28px] sm:rounded-[36px] bg-[#111113]">
               
               {/* Acento curvo amarillo en esquina inferior izquierda */}
               <svg
